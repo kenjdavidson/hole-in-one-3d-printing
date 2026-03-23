@@ -3,6 +3,19 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Blender temporary files
+*.blend1
+*.blend2
+*.bak
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS specific
+.DS_Store
+Thumbs.db
+
 # C extensions
 *.so
 
