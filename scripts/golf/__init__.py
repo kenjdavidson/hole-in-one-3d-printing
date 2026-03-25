@@ -31,6 +31,7 @@ bl_info = {
 import bpy
 from . import geometry_utils
 from . import ui_panel
+from . import draft_angle  # noqa: F401 – registers the module for use by plaque_builder
 
 
 # ── PropertyGroup ─────────────────────────────────────────────────────────────
@@ -74,6 +75,31 @@ class HOLEINONE_Properties(bpy.types.PropertyGroup):
             "protective lip around the carved surface"
         ),
         default=False,
+    )
+    show_advanced: bpy.props.BoolProperty(
+        name="Advanced Settings",
+        description="Show advanced carving options",
+        default=False,
+    )
+    use_draft_angle: bpy.props.BoolProperty(
+        name="Use Draft Angle",
+        description=(
+            "Taper the cutter walls so each carved pocket is slightly wider "
+            "at the surface than at depth, improving visual definition"
+        ),
+        default=False,
+    )
+    draft_factor: bpy.props.FloatProperty(
+        name="Steepness",
+        description=(
+            "How much wider the top of each cutter is relative to its base "
+            "(1.0 = no taper, 1.5 = 50 % wider at top)"
+        ),
+        default=1.1,
+        min=1.0,
+        max=1.5,
+        step=1,
+        precision=2,
     )
 
 

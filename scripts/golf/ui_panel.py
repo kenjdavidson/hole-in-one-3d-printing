@@ -34,4 +34,20 @@ class HOLEINONE_PT_Panel(bpy.types.Panel):
         layout.prop(props, "generate_protective_frame")
 
         layout.separator()
+        box = layout.box()
+        row = box.row()
+        row.prop(
+            props,
+            "show_advanced",
+            icon="TRIA_DOWN" if props.show_advanced else "TRIA_RIGHT",
+            emboss=False,
+        )
+        if props.show_advanced or props.use_manual_scale:
+            col = box.column(align=True)
+            col.prop(props, "use_draft_angle")
+            sub = col.column(align=True)
+            sub.enabled = props.use_draft_angle
+            sub.prop(props, "draft_factor", slider=True)
+
+        layout.separator()
         layout.operator("object.generate_commemorative", icon="MESH_CUBE")
