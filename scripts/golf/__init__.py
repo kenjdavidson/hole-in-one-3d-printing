@@ -60,8 +60,9 @@ class HOLEINONE_Properties(bpy.types.PropertyGroup):
     use_manual_scale: bpy.props.BoolProperty(
         name="Manual Scale Override",
         description=(
-            "When enabled, scale is fitted to the largest SVG object instead "
-            "of anchoring to the Rough boundary"
+            "When enabled, scale is fitted to the largest imported SVG "
+            "object instead of anchoring to Plaque_Base/Plaque_Frame "
+            "(or Rough when no plaque base exists)"
         ),
         default=False,
     )
