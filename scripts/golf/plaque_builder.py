@@ -63,6 +63,11 @@ def carve_plaque(data_source):
     plaque_width = get_val(data_source, "plaque_width", 100.0)
     plaque_height = get_val(data_source, "plaque_height", 140.0)
     plaque_thick = get_val(data_source, "plaque_thick", 6.0)
+    generate_protective_frame = get_val(data_source, "generate_protective_frame", False)
+    use_layer_depths = get_val(data_source, "use_layer_depths", False)
+    use_floor_texture = get_val(data_source, "use_floor_texture", False)
+    use_draft_angle = get_val(data_source, "use_draft_angle", False)
+    draft_factor = get_val(data_source, "draft_factor", 1.1)
 
     if plaque_base_svg is not None:
         base_x = plaque_base_svg.dimensions.x
@@ -70,7 +75,7 @@ def carve_plaque(data_source):
         move_object_to_collection(plaque_base_svg, output_collection)
         plaque_base_svg.display_type = "WIRE"
         plaque_base_svg.hide_render = True
-    elif get_val(data_source, "generate_protective_frame", False) and rough_obj is not None:
+    elif generate_protective_frame and rough_obj is not None:
         base_x = rough_obj.dimensions.x + PROTECTIVE_FRAME_MARGIN * 2
         base_y = rough_obj.dimensions.y + PROTECTIVE_FRAME_MARGIN * 2
     else:
@@ -97,7 +102,7 @@ def carve_plaque(data_source):
             # from data_source and clamp it so the cut cannot reach the bottom
             # of the plaque.  Fall back to the COLOR_MAP default when the
             # feature is off or the layer has no dedicated key (e.g. Tee, Text).
-            if get_val(data_source, "use_layer_depths", False) and prefix in _DEPTH_PROP_MAP:
+            if use_layer_depths and prefix in _DEPTH_PROP_MAP:
                 raw_depth = get_val(data_source, _DEPTH_PROP_MAP[prefix], depth)
                 # Clamp: leave at least CUTTER_EPSILON of material at the base.
                 effective_depth = min(raw_depth, plaque_thick - CUTTER_EPSILON)
@@ -110,13 +115,13 @@ def carve_plaque(data_source):
 
             cutter.location.z = plaque_thick / 2 + CUTTER_EPSILON
 
-            if get_val(data_source, "use_floor_texture", False) and prefix in FLOOR_TEXTURE_CONFIG:
+            if use_floor_texture and prefix in FLOOR_TEXTURE_CONFIG:
                 apply_floor_texture(cutter, prefix, solidify)
 
-            if get_val(data_source, "use_draft_angle", False):
+            if use_draft_angle:
                 bpy.context.view_layer.objects.active = cutter
                 bpy.ops.object.modifier_apply(modifier="Solidify")
-                apply_taper(cutter, get_val(data_source, "draft_factor", 1.1))
+                apply_taper(cutter, draft_factor)
 
             if not cutter.data.materials:
                 cutter.data.materials.append(mat)

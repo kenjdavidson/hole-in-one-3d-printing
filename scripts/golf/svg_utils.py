@@ -101,12 +101,13 @@ def sanitize_geometry(objects, data_source, output_collection):
             (obj for obj in sanitized_objects if obj.name.startswith("Rough")), None
         )
 
-    if not get_val(data_source, "use_manual_scale", False) and anchor:
+    use_manual_scale = get_val(data_source, "use_manual_scale", False)
+    plaque_width = get_val(data_source, "plaque_width", 100.0)
+    plaque_height = get_val(data_source, "plaque_height", 140.0)
+
+    if not use_manual_scale and anchor:
         anchor_w = anchor.dimensions.x
         anchor_h = anchor.dimensions.y
-
-        plaque_width = get_val(data_source, "plaque_width", 100.0)
-        plaque_height = get_val(data_source, "plaque_height", 140.0)
 
         width_ratio = plaque_width / anchor_w if anchor_w > 0 else None
         height_ratio = plaque_height / anchor_h if anchor_h > 0 else None
@@ -116,8 +117,6 @@ def sanitize_geometry(objects, data_source, output_collection):
         else:
             scale_ratio = width_ratio or height_ratio or 1.0
     else:
-        plaque_width = get_val(data_source, "plaque_width", 100.0)
-        plaque_height = get_val(data_source, "plaque_height", 140.0)
         max_svg_dim = max(
             max(obj.dimensions.x, obj.dimensions.y) for obj in sanitized_objects
         )
