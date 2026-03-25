@@ -15,6 +15,7 @@ from .config import (
     PLAQUE_BASE_PREFIXES,
     PROTECTIVE_FRAME_MARGIN,
 )
+from .draft_angle import apply_taper
 from .materials import setup_material
 from .svg_utils import find_plaque_base, sanitize_geometry
 
@@ -73,6 +74,11 @@ def carve_plaque(props):
             solidify.offset = -1.0
 
             cutter.location.z = props.plaque_thick / 2 + CUTTER_EPSILON
+
+            if getattr(props, "use_draft_angle", False):
+                bpy.context.view_layer.objects.active = cutter
+                bpy.ops.object.modifier_apply(modifier="Solidify")
+                apply_taper(cutter, props.draft_factor)
 
             if not cutter.data.materials:
                 cutter.data.materials.append(mat)
