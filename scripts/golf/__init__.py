@@ -101,6 +101,14 @@ class HOLEINONE_Properties(bpy.types.PropertyGroup):
         step=1,
         precision=2,
     )
+    use_floor_texture: bpy.props.BoolProperty(
+        name="Floor Texturing",
+        description=(
+            "Add a procedural displacement texture to the floor of Water "
+            "(Musgrave ripple) and Sand (Clouds grain) cutters"
+        ),
+        default=False,
+    )
 
 
 # ── Operator ─────────────────────────────────────────────────────────────────

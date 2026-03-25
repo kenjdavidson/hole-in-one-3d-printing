@@ -49,5 +49,8 @@ class HOLEINONE_PT_Panel(bpy.types.Panel):
             sub.enabled = props.use_draft_angle
             sub.prop(props, "draft_factor", slider=True)
 
+            col.separator()
+            col.prop(props, "use_floor_texture")
+
         layout.separator()
         layout.operator("object.generate_commemorative", icon="MESH_CUBE")
