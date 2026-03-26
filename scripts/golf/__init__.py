@@ -58,6 +58,34 @@ class HOLEINONE_Properties(bpy.types.PropertyGroup):
         default=6.0,
         min=1.0,
     )
+    use_auto_thickness: bpy.props.BoolProperty(
+        name="Auto Thickness (Layer Based)",
+        description=(
+            "Compute total plaque thickness from print layer height, base "
+            "layers, and detected golf segments"
+        ),
+        default=True,
+    )
+    print_layer_height: bpy.props.FloatProperty(
+        name="Print Layer Height (mm)",
+        description="Per-layer print height used to compute plaque thickness",
+        default=0.2,
+        min=0.05,
+        max=1.0,
+        precision=3,
+    )
+    base_print_layers: bpy.props.IntProperty(
+        name="Base Layers",
+        description="Minimum solid base layers before carved segments",
+        default=3,
+        min=3,
+    )
+    segment_print_layers: bpy.props.IntProperty(
+        name="Layers per Segment",
+        description="Printed layers allocated to each detected golf segment",
+        default=3,
+        min=1,
+    )
     use_manual_scale: bpy.props.BoolProperty(
         name="Manual Scale Override",
         description=(

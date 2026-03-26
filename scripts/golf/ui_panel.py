@@ -25,7 +25,14 @@ class HOLEINONE_PT_Panel(bpy.types.Panel):
         col.label(text="Plaque Dimensions:")
         col.prop(props, "plaque_width")
         col.prop(props, "plaque_height")
-        col.prop(props, "plaque_thick")
+        col.prop(props, "use_auto_thickness")
+        if props.use_auto_thickness:
+            sub = col.column(align=True)
+            sub.prop(props, "print_layer_height")
+            sub.prop(props, "base_print_layers")
+            sub.prop(props, "segment_print_layers")
+        else:
+            col.prop(props, "plaque_thick")
 
         layout.separator()
         layout.prop(props, "use_manual_scale")
