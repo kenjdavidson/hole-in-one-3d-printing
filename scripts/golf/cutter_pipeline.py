@@ -6,6 +6,10 @@ from .config import CUTTER_EPSILON
 from .draft_angle import apply_top_taper, create_stepped_cutters
 from .floor_texture import FLOOR_TEXTURE_CONFIG, apply_floor_texture
 
+# Explicit anti-coplanar overlap settings for boolean cutters.
+CUTTER_OVERLAP_MM = 1.0
+CUTTER_TOP_POKE_MM = 0.5
+
 # Maps a layer-name prefix to the corresponding props attribute name so that
 # depth can be read from the scene properties when use_layer_depths is enabled.
 DEPTH_PROP_MAP = {
@@ -39,7 +43,7 @@ def prepare_active_cutters(cutter, props, effective_depth):
         )
     else:
         solidify = cutter.modifiers.new(name="Solidify", type="SOLIDIFY")
-        solidify.thickness = effective_depth + CUTTER_EPSILON
+        solidify.thickness = effective_depth + CUTTER_OVERLAP_MM
         solidify.offset = -1.0
         active_cutters = [cutter]
 
@@ -57,7 +61,9 @@ def postprocess_cutter_geometry(
 ):
     """Apply per-cutter geometry modifiers and positioning before boolean."""
     step_raise = float(active_cutter.get("_step_raise_z", 0.0))
-    active_cutter.location.z = plaque_thickness / 2 + CUTTER_EPSILON + step_raise
+    active_cutter.location.z = (
+        plaque_thickness / 2 + CUTTER_TOP_POKE_MM + step_raise
+    )
 
     solidify = next(
         (modifier for modifier in active_cutter.modifiers if modifier.type == "SOLIDIFY"),
@@ -159,3 +165,13 @@ def apply_boolean_cut(base, active_cutter, base_x, base_y, plaque_thickness):
     if pre_cut_mesh.users == 0:
         bpy.data.meshes.remove(pre_cut_mesh)
     return True
+
+
+def cleanup_base_mesh(base):
+    """Merge duplicate vertices and recalculate outward normals on base mesh."""
+    bpy.context.view_layer.objects.active = base
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.merge_by_distance(distance=0.0001)
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode="OBJECT")

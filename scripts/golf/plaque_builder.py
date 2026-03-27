@@ -18,6 +18,8 @@ from .config import (
 from .cutter_pipeline import (
     apply_solidify_if_present,
     apply_boolean_cut,
+    cleanup_base_mesh,
+    CUTTER_TOP_POKE_MM,
     duplicate_cutter,
     is_oversized_cutter,
     is_valid_cutter_mesh,
@@ -113,7 +115,7 @@ def carve_plaque(props):
                 props, prefix, depth, plaque_thickness
             )
 
-            cutter.location.z = plaque_thickness / 2 + CUTTER_EPSILON
+            cutter.location.z = plaque_thickness / 2 + CUTTER_TOP_POKE_MM
 
             (
                 active_cutters,
@@ -176,4 +178,6 @@ def carve_plaque(props):
 
                 if not cut_applied:
                     continue
+
+    cleanup_base_mesh(base)
 
