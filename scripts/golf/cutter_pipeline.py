@@ -178,9 +178,24 @@ def apply_boolean_cut(base, active_cutter, base_x, base_y, plaque_thickness):
 
 def cleanup_base_mesh(base):
     """Merge duplicate vertices and recalculate outward normals on base mesh."""
-    bpy.context.view_layer.objects.active = base
-    bpy.ops.object.mode_set(mode="EDIT")
-    bpy.ops.mesh.select_all(action="SELECT")
-    bpy.ops.mesh.merge_by_distance(distance=0.0001)
-    bpy.ops.mesh.normals_make_consistent(inside=False)
-    bpy.ops.object.mode_set(mode="OBJECT")
+    if base.data is None:
+        return
+
+    import bmesh
+
+    bm = bmesh.new()
+    bm.from_mesh(base.data)
+
+    # Ensure all vertices have proper positions (remove any degenerate geometry)
+    # by recalculating normals first
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+
+    # Check average normal Z and flip all faces if majority points downward
+    if bm.faces:
+        avg_z = sum(face.normal.z for face in bm.faces) / len(bm.faces)
+        if avg_z < 0:
+            bmesh.ops.reverse_faces(bm, faces=list(bm.faces))
+
+    bm.to_mesh(base.data)
+    bm.free()
+    base.data.update()

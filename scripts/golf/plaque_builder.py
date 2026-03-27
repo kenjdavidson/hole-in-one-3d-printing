@@ -8,6 +8,7 @@ from .collection_utils import (
     ensure_output_collection,
     move_object_to_collection,
 )
+from .container_builder import build_container
 from .config import (
     BASE_OBJECT_NAME,
     COLOR_MAP,
@@ -186,6 +187,10 @@ def carve_plaque(props):
     strap_holes = [
         obj for obj in all_svg_objs if any(obj.name.startswith(pre) for pre in STRAP_HOLE_PREFIXES)
     ]
+
+    if getattr(props, "generate_container", False):
+        build_container(props, base, strap_holes, output_collection, cutters_collection)
+
     for strap_hole in strap_holes:
         prepared_cutter = prepare_strap_hole_cutter(strap_hole, plaque_thickness)
         apply_solidify_if_present(prepared_cutter)
@@ -202,4 +207,7 @@ def carve_plaque(props):
         prepared_cutter.hide_render = True
 
     cleanup_base_mesh(base)
+
+    if bpy.context.mode != "OBJECT":
+        bpy.ops.object.mode_set(mode="OBJECT")
 

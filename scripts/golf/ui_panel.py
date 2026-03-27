@@ -41,6 +41,14 @@ class HOLEINONE_PT_Panel(bpy.types.Panel):
         layout.prop(props, "generate_protective_frame")
 
         layout.separator()
+        layout.prop(props, "generate_container")
+        sub = layout.column(align=True)
+        sub.enabled = props.generate_container
+        sub.prop(props, "container_clearance")
+        sub.prop(props, "container_wall_thickness")
+        sub.prop(props, "container_back_thickness")
+
+        layout.separator()
         box = layout.box()
         row = box.row()
         row.prop(

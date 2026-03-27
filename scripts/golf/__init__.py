@@ -104,6 +104,38 @@ class HOLEINONE_Properties(bpy.types.PropertyGroup):
         ),
         default=False,
     )
+    generate_container: bpy.props.BoolProperty(
+        name="Generate Container",
+        description=(
+            "Create a printable container with a cavity sized to the plaque "
+            "outline and optional clearance"
+        ),
+        default=False,
+    )
+    container_clearance: bpy.props.FloatProperty(
+        name="Container Clearance (mm)",
+        description="Gap added per side between plaque and container cavity",
+        default=0.25,
+        min=0.0,
+        max=2.0,
+        precision=3,
+    )
+    container_wall_thickness: bpy.props.FloatProperty(
+        name="Container Wall (mm)",
+        description="Container wall thickness around the cavity",
+        default=2.0,
+        min=0.5,
+        max=10.0,
+        precision=3,
+    )
+    container_back_thickness: bpy.props.FloatProperty(
+        name="Container Back (mm)",
+        description="Solid back thickness below the cavity",
+        default=2.0,
+        min=0.5,
+        max=10.0,
+        precision=3,
+    )
     show_advanced: bpy.props.BoolProperty(
         name="Advanced Settings",
         description="Show advanced carving options",
