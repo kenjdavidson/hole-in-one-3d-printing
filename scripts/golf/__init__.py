@@ -109,25 +109,44 @@ class HOLEINONE_Properties(bpy.types.PropertyGroup):
         description="Show advanced carving options",
         default=False,
     )
-    use_draft_angle: bpy.props.BoolProperty(
-        name="Use Draft Angle",
+    use_top_taper: bpy.props.BoolProperty(
+        name="Use Top Taper",
         description=(
-            "Taper the cutter walls so each carved pocket is slightly wider "
-            "at the surface than at depth, improving visual definition"
+            "Expand only the top perimeter of each cutter before boolean, "
+            "creating a uniform drafted wall"
         ),
         default=False,
     )
-    draft_factor: bpy.props.FloatProperty(
-        name="Steepness",
+    top_taper_width: bpy.props.FloatProperty(
+        name="Top Taper Width (mm)",
+        description="Outward offset applied only to the top perimeter",
+        default=0.6,
+        min=0.0,
+        max=5.0,
+        precision=3,
+    )
+    use_stepped_walls: bpy.props.BoolProperty(
+        name="Use Stepped Walls",
         description=(
-            "How much wider the top of each cutter is relative to its base "
-            "(1.0 = no taper, 1.5 = 50 % wider at top)"
+            "Create a visible terraced wall by stacking multiple shallower, "
+            "progressively wider cutters"
         ),
-        default=1.1,
-        min=1.0,
-        max=1.5,
-        step=1,
-        precision=2,
+        default=False,
+    )
+    stepped_wall_width: bpy.props.FloatProperty(
+        name="Stepped Wall Width (mm)",
+        description="Total added width from deepest cut to top-most terrace",
+        default=1.5,
+        min=0.0,
+        max=10.0,
+        precision=3,
+    )
+    stepped_wall_steps: bpy.props.IntProperty(
+        name="Stepped Wall Steps",
+        description="Number of stacked terraces used to approximate an angle",
+        default=3,
+        min=2,
+        max=10,
     )
     use_floor_texture: bpy.props.BoolProperty(
         name="Floor Texturing",
