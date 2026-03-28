@@ -26,8 +26,9 @@ def extrude_text_objects(text_objects, plaque_thickness, extrusion_height, mater
         if text_obj.data is None:
             continue
 
-        # Position text at the top surface of the plaque, slightly above
-        text_obj.location.z = plaque_thickness / 2 + CUTTER_TOP_POKE_MM
+        # Position text flush with the top surface of the plaque so the
+        # extrusion is directly connected to the base with no gap.
+        text_obj.location.z = plaque_thickness / 2
 
         # Apply material
         if not text_obj.data.materials:
