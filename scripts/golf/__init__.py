@@ -136,6 +136,26 @@ class HOLEINONE_Properties(bpy.types.PropertyGroup):
         max=10.0,
         precision=3,
     )
+    text_extrusion_height: bpy.props.FloatProperty(
+        name="Text Height/Depth (mm)",
+        description=(
+            "Emboss height above plaque surface or engrave depth below surface "
+            "for Text.XXX objects"
+        ),
+        default=1.0,
+        min=0.1,
+        max=10.0,
+        precision=2,
+    )
+    text_mode: bpy.props.EnumProperty(
+        name="Text Mode",
+        description="Choose whether Text.XXX is raised or cut into the plaque",
+        items=(
+            ("EMBOSS", "Emboss", "Raise text above the top surface"),
+            ("ENGRAVE", "Engrave", "Cut text into the top surface"),
+        ),
+        default="EMBOSS",
+    )
     show_advanced: bpy.props.BoolProperty(
         name="Advanced Settings",
         description="Show advanced carving options",

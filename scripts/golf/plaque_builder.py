@@ -33,6 +33,7 @@ from .cutter_pipeline import (
 )
 from .materials import setup_material
 from .svg_utils import find_plaque_base, sanitize_geometry
+from .text_extrusion import extrude_text_objects, engrave_text_objects
 
 def _count_present_segments(objects):
     """Count how many carveable segment prefixes are present in the SVG set."""
@@ -112,6 +113,10 @@ def carve_plaque(props):
     sorted_items = sorted(COLOR_MAP.items(), key=lambda item: item[1][0], reverse=True)
 
     for prefix, (depth, color) in sorted_items:
+        # Skip Text objects – they are extruded, not carved
+        if prefix == "Text":
+            continue
+
         cutters = [obj for obj in all_svg_objs if obj.name.startswith(prefix)]
         mat = setup_material(prefix, color)
 
@@ -207,6 +212,30 @@ def carve_plaque(props):
         prepared_cutter.hide_render = True
 
     cleanup_base_mesh(base)
+
+    # Process text objects as raised emboss or engraved cuts
+    text_objects = [
+        obj for obj in all_svg_objs if obj.name.startswith("Text")
+    ]
+    if text_objects:
+        text_material = setup_material("Text", COLOR_MAP["Text"][1])
+        if getattr(props, "text_mode", "EMBOSS") == "ENGRAVE":
+            engrave_text_objects(
+                text_objects,
+                base,
+                plaque_thickness,
+                props.text_extrusion_height,
+                text_material,
+                cutters_collection,
+            )
+        else:
+            extrude_text_objects(
+                text_objects,
+                plaque_thickness,
+                props.text_extrusion_height,
+                text_material,
+                output_collection,
+            )
 
     if bpy.context.mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")

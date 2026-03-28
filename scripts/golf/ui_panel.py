@@ -49,6 +49,10 @@ class HOLEINONE_PT_Panel(bpy.types.Panel):
         sub.prop(props, "container_back_thickness")
 
         layout.separator()
+        layout.prop(props, "text_mode")
+        layout.prop(props, "text_extrusion_height")
+
+        layout.separator()
         box = layout.box()
         row = box.row()
         row.prop(
