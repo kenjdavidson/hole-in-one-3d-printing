@@ -13,6 +13,10 @@ CUTTER_EPSILON = 0.1
 # These objects are NOT used as cutters – they define the outer frame boundary.
 PLAQUE_BASE_PREFIXES = ("Plaque_Base", "Plaque_Frame")
 
+# Name prefixes that identify dedicated through-hole cutters such as bag-tag
+# strap holes. These bypass normal depth/taper logic and always cut through.
+STRAP_HOLE_PREFIXES = ("StrapHole",)
+
 # Extra margin (mm) added to each side when auto-generating a protective frame
 # from the Rough boundary.
 PROTECTIVE_FRAME_MARGIN = 2.0

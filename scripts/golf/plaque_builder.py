@@ -8,29 +8,31 @@ from .collection_utils import (
     ensure_output_collection,
     move_object_to_collection,
 )
+from .container_builder import build_container
 from .config import (
     BASE_OBJECT_NAME,
     COLOR_MAP,
-    CUTTER_EPSILON,
     PLAQUE_BASE_PREFIXES,
     PROTECTIVE_FRAME_MARGIN,
+    STRAP_HOLE_PREFIXES,
 )
-from .draft_angle import apply_taper
-from .floor_texture import FLOOR_TEXTURE_CONFIG, apply_floor_texture
+from .cutter_pipeline import (
+    apply_solidify_if_present,
+    apply_boolean_cut,
+    cleanup_base_mesh,
+    CUTTER_TOP_POKE_MM,
+    duplicate_cutter,
+    is_oversized_cutter,
+    is_valid_cutter_mesh,
+    log_oversized_cutter,
+    postprocess_cutter_geometry,
+    prepare_active_cutters,
+    prepare_strap_hole_cutter,
+    resolve_effective_depth,
+)
 from .materials import setup_material
 from .svg_utils import find_plaque_base, sanitize_geometry
 from .utils import get_val
-
-# Maps a layer-name prefix to the corresponding data_source key so that
-# depth can be read from either scene properties or a plain dict when
-# use_layer_depths is enabled.
-_DEPTH_PROP_MAP = {
-    "Water": "depth_water",
-    "Sand": "depth_sand",
-    "Green": "depth_green",
-    "Fairway": "depth_fairway",
-    "Rough": "depth_rough",
-}
 
 
 def _count_present_segments(objects):
@@ -71,7 +73,9 @@ def carve_plaque(data_source):
     clear_collection(output_collection)
     clear_collection(cutters_collection)
 
-    all_known_prefixes = tuple(COLOR_MAP.keys()) + PLAQUE_BASE_PREFIXES
+    all_known_prefixes = (
+        tuple(COLOR_MAP.keys()) + PLAQUE_BASE_PREFIXES + STRAP_HOLE_PREFIXES
+    )
     all_svg_objs = [
         obj
         for obj in bpy.data.objects
@@ -89,16 +93,14 @@ def carve_plaque(data_source):
     plaque_width = get_val(data_source, "plaque_width", 100.0)
     plaque_height = get_val(data_source, "plaque_height", 140.0)
     generate_protective_frame = get_val(data_source, "generate_protective_frame", False)
-    use_layer_depths = get_val(data_source, "use_layer_depths", False)
-    use_floor_texture = get_val(data_source, "use_floor_texture", False)
-    use_draft_angle = get_val(data_source, "use_draft_angle", False)
-    draft_factor = get_val(data_source, "draft_factor", 1.1)
+    generate_container = get_val(data_source, "generate_container", False)
 
     if plaque_base_svg is not None:
         base_x = plaque_base_svg.dimensions.x
         base_y = plaque_base_svg.dimensions.y
         move_object_to_collection(plaque_base_svg, output_collection)
         plaque_base_svg.display_type = "WIRE"
+        plaque_base_svg.hide_viewport = True
         plaque_base_svg.hide_render = True
     elif generate_protective_frame and rough_obj is not None:
         base_x = rough_obj.dimensions.x + PROTECTIVE_FRAME_MARGIN * 2
@@ -115,48 +117,109 @@ def carve_plaque(data_source):
     bpy.ops.object.transform_apply(scale=True)
     base.data.materials.append(setup_material("Rough", COLOR_MAP["Rough"][1]))
 
-    sorted_items = sorted(COLOR_MAP.items(), key=lambda item: item[1][0])
+    max_cutter_x = base_x * 3.0
+    max_cutter_y = base_y * 3.0
+
+    # Apply deeper cuts first so overlapping tapered cutters carve into solid
+    # material before surrounding shallower layers are removed.
+    sorted_items = sorted(COLOR_MAP.items(), key=lambda item: item[1][0], reverse=True)
 
     for prefix, (depth, color) in sorted_items:
         cutters = [obj for obj in all_svg_objs if obj.name.startswith(prefix)]
         mat = setup_material(prefix, color)
 
         for cutter in cutters:
-            # ── Resolve carve depth ───────────────────────────────────────────
-            # When custom layer depths are enabled, read the per-layer value
-            # from data_source and clamp it so the cut cannot reach the bottom
-            # of the plaque.  Fall back to the COLOR_MAP default when the
-            # feature is off or the layer has no dedicated key (e.g. Tee, Text).
-            if use_layer_depths and prefix in _DEPTH_PROP_MAP:
-                raw_depth = get_val(data_source, _DEPTH_PROP_MAP[prefix], depth)
-                # Clamp: leave at least CUTTER_EPSILON of material at the base.
-                effective_depth = min(raw_depth, plaque_thickness - CUTTER_EPSILON)
-            else:
-                effective_depth = depth
-
-            solidify = cutter.modifiers.new(name="Solidify", type="SOLIDIFY")
-            solidify.thickness = effective_depth + CUTTER_EPSILON
-            solidify.offset = -1.0
-
-            cutter.location.z = plaque_thickness / 2 + CUTTER_EPSILON
-
-            if use_floor_texture and prefix in FLOOR_TEXTURE_CONFIG:
-                apply_floor_texture(cutter, prefix, solidify)
-
-            if use_draft_angle:
-                bpy.context.view_layer.objects.active = cutter
-                bpy.ops.object.modifier_apply(modifier="Solidify")
-                apply_taper(cutter, draft_factor)
-
-            if not cutter.data.materials:
-                cutter.data.materials.append(mat)
-
-            bool_mod = base.modifiers.new(
-                type="BOOLEAN", name=f"Cut_{cutter.name}"
+            effective_depth = resolve_effective_depth(
+                data_source, prefix, depth, plaque_thickness
             )
-            bool_mod.object = cutter
-            bool_mod.operation = "DIFFERENCE"
-            bool_mod.solver = "EXACT"
 
-            cutter.display_type = "WIRE"
-            cutter.hide_render = True
+            cutter.location.z = plaque_thickness / 2 + CUTTER_TOP_POKE_MM
+
+            (
+                active_cutters,
+                use_top_taper,
+                use_stepped_walls,
+            ) = prepare_active_cutters(cutter, data_source, effective_depth)
+
+            for active_cutter in active_cutters:
+                fallback_cutter = None
+                if use_top_taper and not use_stepped_walls:
+                    fallback_cutter = duplicate_cutter(active_cutter)
+
+                postprocess_cutter_geometry(
+                    active_cutter,
+                    prefix,
+                    data_source,
+                    effective_depth,
+                    plaque_thickness,
+                    use_top_taper,
+                    use_stepped_walls,
+                )
+
+                if not active_cutter.data.materials:
+                    active_cutter.data.materials.append(mat)
+
+                if not is_valid_cutter_mesh(active_cutter):
+                    continue
+
+                if is_oversized_cutter(active_cutter, max_cutter_x, max_cutter_y):
+                    log_oversized_cutter(active_cutter, max_cutter_x, max_cutter_y)
+                    continue
+
+                cut_applied = apply_boolean_cut(
+                    base, active_cutter, base_x, base_y, plaque_thickness
+                )
+
+                active_cutter.display_type = "WIRE"
+                active_cutter.hide_render = True
+
+                if not cut_applied and fallback_cutter is not None:
+                    fallback_cutter.location = active_cutter.location.copy()
+                    apply_solidify_if_present(fallback_cutter)
+
+                    if not fallback_cutter.data.materials:
+                        fallback_cutter.data.materials.append(mat)
+
+                    if is_valid_cutter_mesh(fallback_cutter) and not is_oversized_cutter(
+                        fallback_cutter, max_cutter_x, max_cutter_y
+                    ):
+                        cut_applied = apply_boolean_cut(
+                            base,
+                            fallback_cutter,
+                            base_x,
+                            base_y,
+                            plaque_thickness,
+                        )
+
+                    fallback_cutter.display_type = "WIRE"
+                    fallback_cutter.hide_render = True
+
+                if not cut_applied:
+                    continue
+
+    strap_holes = [
+        obj for obj in all_svg_objs if any(obj.name.startswith(pre) for pre in STRAP_HOLE_PREFIXES)
+    ]
+
+    if generate_container:
+        build_container(data_source, base, strap_holes, output_collection, cutters_collection)
+
+    for strap_hole in strap_holes:
+        prepared_cutter = prepare_strap_hole_cutter(strap_hole, plaque_thickness)
+        apply_solidify_if_present(prepared_cutter)
+
+        if not is_valid_cutter_mesh(prepared_cutter):
+            continue
+
+        if is_oversized_cutter(prepared_cutter, max_cutter_x, max_cutter_y):
+            log_oversized_cutter(prepared_cutter, max_cutter_x, max_cutter_y)
+            continue
+
+        apply_boolean_cut(base, prepared_cutter, base_x, base_y, plaque_thickness)
+        prepared_cutter.display_type = "WIRE"
+        prepared_cutter.hide_render = True
+
+    cleanup_base_mesh(base)
+
+    if bpy.context.mode != "OBJECT":
+        bpy.ops.object.mode_set(mode="OBJECT")

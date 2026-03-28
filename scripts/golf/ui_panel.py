@@ -41,6 +41,14 @@ class HOLEINONE_PT_Panel(bpy.types.Panel):
         layout.prop(props, "generate_protective_frame")
 
         layout.separator()
+        layout.prop(props, "generate_container")
+        sub = layout.column(align=True)
+        sub.enabled = props.generate_container
+        sub.prop(props, "container_clearance")
+        sub.prop(props, "container_wall_thickness")
+        sub.prop(props, "container_back_thickness")
+
+        layout.separator()
         box = layout.box()
         row = box.row()
         row.prop(
@@ -51,10 +59,17 @@ class HOLEINONE_PT_Panel(bpy.types.Panel):
         )
         if props.show_advanced or props.use_manual_scale:
             col = box.column(align=True)
-            col.prop(props, "use_draft_angle")
+            col.prop(props, "use_top_taper")
             sub = col.column(align=True)
-            sub.enabled = props.use_draft_angle
-            sub.prop(props, "draft_factor", slider=True)
+            sub.enabled = props.use_top_taper
+            sub.prop(props, "top_taper_width")
+
+            col.separator()
+            col.prop(props, "use_stepped_walls")
+            sub = col.column(align=True)
+            sub.enabled = props.use_stepped_walls
+            sub.prop(props, "stepped_wall_width")
+            sub.prop(props, "stepped_wall_steps")
 
             col.separator()
             col.prop(props, "use_floor_texture")
