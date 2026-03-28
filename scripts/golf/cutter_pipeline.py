@@ -5,6 +5,7 @@ import bpy
 from .config import CUTTER_EPSILON
 from .draft_angle import apply_top_taper, create_stepped_cutters
 from .floor_texture import FLOOR_TEXTURE_CONFIG, apply_floor_texture
+from .utils import get_val
 
 # Explicit anti-coplanar overlap settings for boolean cutters.
 CUTTER_OVERLAP_MM = 1.0
@@ -20,24 +21,27 @@ DEPTH_PROP_MAP = {
 }
 
 
-def resolve_effective_depth(props, prefix, default_depth, plaque_thickness):
+def resolve_effective_depth(data_source, prefix, default_depth, plaque_thickness):
     """Resolve carve depth for a layer prefix with optional custom overrides."""
-    if getattr(props, "use_layer_depths", False) and prefix in DEPTH_PROP_MAP:
-        raw_depth = getattr(props, DEPTH_PROP_MAP[prefix], default_depth)
+    use_layer_depths = get_val(data_source, "use_layer_depths", False)
+    if use_layer_depths and prefix in DEPTH_PROP_MAP:
+        raw_depth = get_val(data_source, DEPTH_PROP_MAP[prefix], default_depth)
         return min(raw_depth, plaque_thickness - CUTTER_EPSILON)
     return default_depth
 
 
-def prepare_active_cutters(cutter, props, effective_depth):
+def prepare_active_cutters(cutter, data_source, effective_depth):
     """Create and return active cutter objects for one source cutter."""
-    use_top_taper = getattr(props, "use_top_taper", False)
-    use_stepped_walls = getattr(props, "use_stepped_walls", False)
+    use_top_taper = get_val(data_source, "use_top_taper", False)
+    use_stepped_walls = get_val(data_source, "use_stepped_walls", False)
 
     if use_stepped_walls:
+        stepped_wall_width = get_val(data_source, "stepped_wall_width", 1.5)
+        stepped_wall_steps = get_val(data_source, "stepped_wall_steps", 3)
         active_cutters = create_stepped_cutters(
             cutter,
-            props.stepped_wall_width,
-            props.stepped_wall_steps,
+            stepped_wall_width,
+            stepped_wall_steps,
             effective_depth,
             CUTTER_EPSILON,
         )
@@ -62,7 +66,7 @@ def prepare_strap_hole_cutter(cutter, plaque_thickness):
 def postprocess_cutter_geometry(
     active_cutter,
     prefix,
-    props,
+    data_source,
     effective_depth,
     plaque_thickness,
     use_top_taper,
@@ -79,8 +83,9 @@ def postprocess_cutter_geometry(
         None,
     )
 
+    use_floor_texture = get_val(data_source, "use_floor_texture", False)
     if (
-        getattr(props, "use_floor_texture", False)
+        use_floor_texture
         and prefix in FLOOR_TEXTURE_CONFIG
         and solidify is not None
     ):
@@ -90,7 +95,8 @@ def postprocess_cutter_geometry(
         bpy.ops.object.modifier_apply(modifier=solidify.name)
 
     if use_top_taper:
-        apply_top_taper(active_cutter, props.top_taper_width)
+        top_taper_width = get_val(data_source, "top_taper_width", 0.6)
+        apply_top_taper(active_cutter, top_taper_width)
 
 
 def duplicate_cutter(active_cutter):

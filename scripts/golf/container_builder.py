@@ -3,6 +3,7 @@
 import bpy
 
 from .collection_utils import move_object_to_collection
+from .utils import get_val
 
 CONTAINER_OBJECT_NAME = "HoleInOneContainer"
 
@@ -29,11 +30,11 @@ def _create_box(name, dimensions, location, collection):
     return obj
 
 
-def build_container(props, base, strap_holes, output_collection, cutters_collection):
+def build_container(data_source, base, strap_holes, output_collection, cutters_collection):
     """Create a fitted container and cut matching strap-hole openings."""
-    clearance = float(max(0.0, props.container_clearance))
-    wall_thickness = float(max(0.1, props.container_wall_thickness))
-    back_thickness = float(max(0.1, props.container_back_thickness))
+    clearance = float(max(0.0, get_val(data_source, "container_clearance", 0.25)))
+    wall_thickness = float(max(0.1, get_val(data_source, "container_wall_thickness", 2.0)))
+    back_thickness = float(max(0.1, get_val(data_source, "container_back_thickness", 2.0)))
 
     plaque_x = float(base.dimensions.x)
     plaque_y = float(base.dimensions.y)
