@@ -8,7 +8,20 @@ from .config import PLAQUE_BASE_PREFIXES
 
 
 def ensure_upward_normals(mesh_data):
-    """Recalculate mesh normals and ensure average face normal points +Z."""
+    """Recalculate mesh normals and ensure every face normal points +Z.
+
+    ``bmesh.ops.recalc_face_normals`` makes normals consistent *within each
+    connected face island*, but letters with inner loops (R, O, B, D, P …)
+    produce a separate, disconnected island for their counter (the enclosed
+    hole).  The outer letter body has more faces, so when only the global
+    average was checked the counter island — whose normals point -Z after
+    curve-to-mesh conversion — was left untouched.  Solidify then extruded
+    those counter faces *downward* through the plaque, creating the visible
+    spike artefacts and open mesh boundaries that Cura flags as non-watertight.
+
+    Flipping each face individually (rather than using a global average) fixes
+    all islands regardless of their relative size.
+    """
     if mesh_data is None:
         return
 
@@ -18,10 +31,16 @@ def ensure_upward_normals(mesh_data):
         bm.free()
         return
 
+    # Make normals consistent within each connected island first.
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    avg_z = sum(face.normal.z for face in bm.faces) / len(bm.faces)
-    if avg_z < 0:
-        bmesh.ops.reverse_faces(bm, faces=list(bm.faces))
+    bm.normal_update()
+
+    # Flip any face whose normal still points downward.  This corrects counter
+    # islands that recalc_face_normals leaves pointing -Z because SVG inner
+    # contours are wound in the opposite direction to the outer silhouette.
+    faces_to_flip = [f for f in bm.faces if f.normal.z < 0]
+    if faces_to_flip:
+        bmesh.ops.reverse_faces(bm, faces=faces_to_flip)
 
     bm.to_mesh(mesh_data)
     bm.free()
