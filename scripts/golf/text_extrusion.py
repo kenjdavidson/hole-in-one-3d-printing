@@ -34,10 +34,15 @@ def extrude_text_objects(text_objects, plaque_thickness, extrusion_height, mater
         if not text_obj.data.materials:
             text_obj.data.materials.append(material)
 
-        # Add Solidify modifier to extrude the text outline upward
+        # Add Solidify modifier to extrude the text outline upward.
+        # use_even_offset prevents self-intersecting spikes at sharp corners;
+        # use_quality_normals ensures consistent extrusion direction and avoids
+        # faces being pushed downward when winding is locally inconsistent.
         solidify = text_obj.modifiers.new(name="Solidify", type="SOLIDIFY")
         solidify.thickness = extrusion_height
         solidify.offset = 1.0  # Extrude only upward (positive Z)
+        solidify.use_even_offset = True
+        solidify.use_quality_normals = True
 
         # Apply the modifier to bake the extrusion
         bpy.context.view_layer.objects.active = text_obj
