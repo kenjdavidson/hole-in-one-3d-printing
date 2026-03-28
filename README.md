@@ -1,4 +1,4 @@
-# blender-scripts
+# 3d Printing Blender Scripts
 
 Random Blender Python scripts to help with various projects.  
 Manage them with Git so changes are always in sync between machines.
