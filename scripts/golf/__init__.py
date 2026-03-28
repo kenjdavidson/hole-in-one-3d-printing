@@ -21,17 +21,21 @@ Workflow
 bl_info = {
     "name": "Hole-In-One Commemorative Generator",
     "author": "Ken J. Davidson",
-    "version": (1, 0, 0),
+    "version": (1, 1, 0),
     "blender": (3, 0, 0),
     "location": "View3D > Sidebar > Golf",
-    "description": "Generate a 3D-printable golf course commemorative plaque from SVG traces",
+    "description": (
+        "Generate a 3D-printable golf course commemorative plaque from SVG traces. "
+        "Supports CARVE, EMBOSS, and ENGRAVE element strategies per layer."
+    ),
     "category": "Object",
 }
 
 import bpy
 from . import geometry_utils
 from . import ui_panel
-from . import draft_angle  # noqa: F401 – registers the module for use by plaque_builder
+from . import draft_angle       # noqa: F401 – registers the module for use by plaque_builder
+from . import element_strategy  # noqa: F401 – ensures strategy registry is populated
 
 
 # ── PropertyGroup ─────────────────────────────────────────────────────────────

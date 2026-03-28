@@ -20,8 +20,20 @@ scripts/
     __init__.py
     add_grid_of_objects.py
   golf/                 # 3D-printable golf commemorative plaque generator
-    __init__.py
-    geometry_utils.py
+    __init__.py         #   ← addon entry point (bl_info, Operators, Panel)
+    config.py           #   ← ElementType enum, LayerConfig, COLOR_MAP
+    element_strategy.py #   ← CarveStrategy / EmbossStrategy / EngraveStrategy
+    plaque_builder.py   #   ← main pipeline (strategy dispatch)
+    plaque_request.py   #   ← serialisable build-request dataclass (web API)
+    cutter_pipeline.py  #   ← low-level Boolean helpers
+    collection_utils.py
+    container_builder.py
+    draft_angle.py
+    floor_texture.py
+    geometry_utils.py   #   ← backward-compat shim (re-exports carve_plaque)
+    materials.py
+    svg_utils.py
+    text_extrusion.py
     ui_panel.py
   materials/            # Material and shader node setup helpers
     __init__.py
@@ -156,8 +168,56 @@ can run and reload addon packages directly.  Point it at any category folder
 | File | Description |
 |------|-------------|
 | `__init__.py` | Addon entry point – registers `HOLEINONE_Properties`, the Generate operator, and the sidebar panel. |
-| `geometry_utils.py` | `COLOR_MAP` configuration, `setup_material`, `sanitize_geometry` (curve→mesh conversion and auto-scaling), and `carve_plaque` (Boolean difference operations). |
-| `ui_panel.py` | Sidebar panel in the **Golf** N-panel category with plaque dimension controls and the **Generate 3D Plaque** button. |
+| `config.py` | `ElementType` enum, `LayerConfig` dataclass, and `COLOR_MAP` – maps every SVG layer prefix to its depth, colour, and default element strategy. |
+| `element_strategy.py` | Strategy pattern: `ElementStrategy` abstract base, `CarveStrategy` (Boolean-difference terrain carving), `EmbossStrategy` (solidify-extrude above surface), `EngraveStrategy` (shallow centred cut), `BuildContext` dataclass, and `get_strategy()` factory. |
+| `plaque_builder.py` | Main pipeline – builds the base plaque and dispatches each SVG layer to the appropriate strategy via `get_strategy()`.  Accepts either a Blender `PropertyGroup` or a `PlaqueRequest` dataclass. |
+| `plaque_request.py` | Serialisable `PlaqueRequest` dataclass that mirrors every Blender scene property, allowing the pipeline to be driven from a web API or CLI without a Blender UI session. |
+| `cutter_pipeline.py` | Low-level Boolean-cutter helpers: solidify, draft-angle taper, stepped walls, floor texture, validity checks, and `apply_boolean_cut`. Used internally by `CarveStrategy`. |
+| `collection_utils.py` | Helpers for creating, clearing, and linking objects into the output and cutters collections. |
+| `container_builder.py` | Generates an optional printed container with a fitted cavity and strap-hole cut-throughs. |
+| `draft_angle.py` | Top-taper and stepped-wall geometry operations on cutter meshes. |
+| `floor_texture.py` | Procedural displacement (Musgrave / Clouds) applied to the floor face of Water and Sand cutters. |
+| `geometry_utils.py` | Backward-compatibility shim – re-exports `carve_plaque` from `plaque_builder`. |
+| `materials.py` | `setup_material` helper – creates or retrieves a `Mat_<name>` diffuse material. |
+| `svg_utils.py` | SVG/curve → mesh conversion, auto-scaling, centring, and normal-recalculation helpers. |
+| `text_extrusion.py` | `extrude_text_objects` (EMBOSS) and `engrave_text_objects` (ENGRAVE) used by the respective strategies. |
+| `ui_panel.py` | Sidebar panel in the **Golf** N-panel category with dimension controls and the **Generate 3D Plaque** button. |
+
+#### Element strategies
+
+Each SVG layer prefix maps to an `ElementType` in `config.COLOR_MAP`.  The
+pipeline calls `get_strategy(element_type).process(...)` for every prefix,
+so adding a new effect (e.g. `RELIEF`) only requires:
+
+1. Adding a new `ElementType` variant in `config.py`.
+2. Subclassing `ElementStrategy` in `element_strategy.py` and implementing `process`.
+3. Registering the instance in `_STRATEGY_REGISTRY`.
+
+No other module needs to change.
+
+| Strategy | `ElementType` | Effect |
+|----------|---------------|--------|
+| `CarveStrategy` | `CARVE` | Boolean-difference cut into the plaque. Supports top-taper, stepped walls, floor textures, and fallback cutters. Default for all terrain layers. |
+| `EmbossStrategy` | `EMBOSS` | Solidify-extrude the outline above the plaque surface. Default for `Text` layers. |
+| `EngraveStrategy` | `ENGRAVE` | Shallow centred Boolean cut; avoids winding-order artefacts for fine detail. Used for `Text` when `text_mode = ENGRAVE`. |
+
+#### Headless / web-API usage
+
+Pass a `PlaqueRequest` dataclass anywhere the pipeline expects a Blender
+`PropertyGroup`:
+
+```python
+from scripts.golf.plaque_request import PlaqueRequest
+from scripts.golf.plaque_builder import carve_plaque
+
+req = PlaqueRequest(
+    plaque_width=120.0,
+    plaque_height=160.0,
+    text_mode="ENGRAVE",
+    use_top_taper=True,
+)
+carve_plaque(req)
+```
 
 #### Hole-In-One workflow
 
