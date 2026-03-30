@@ -34,14 +34,50 @@ def extrude_text_objects(text_objects, plaque_thickness, extrusion_height, mater
         if not text_obj.data.materials:
             text_obj.data.materials.append(material)
 
-        # Add Solidify modifier to extrude the text outline upward
+        previous_active = bpy.context.view_layer.objects.active
+        bpy.context.view_layer.objects.active = text_obj
+
+        # Merge coincident (duplicate) vertices produced by the SVG curve
+        # importer.  When Blender converts spline curves to mesh it can emit
+        # the shared endpoint of two adjacent segments as two separate
+        # vertices at the same (or near-same) position.  Those degenerate
+        # zero-area edges/faces have unpredictable normals and Solidify can
+        # extrude them as small downward-pointing spikes.  A tiny merge
+        # threshold (0.0001 units) is safe for all letter geometry.
+        weld = text_obj.modifiers.new(name="Weld", type="WELD")
+        weld.merge_threshold = 0.0001
+        bpy.ops.object.modifier_apply(modifier=weld.name)
+
+        # Triangulate the flat mesh before solidifying.  Letters with inner
+        # loops (R, O, A, B, D, P …) produce N-gon faces with holes after
+        # curve-to-mesh conversion.  Solidify applied directly to those faces
+        # leaves the inner-loop edges non-manifold, causing open boundaries
+        # that slicers like Cura report as "not watertight".  Triangulating
+        # first converts every face — including holed N-gons — into clean
+        # triangles so Solidify always closes into a proper solid volume.
+        tri = text_obj.modifiers.new(name="Triangulate", type="TRIANGULATE")
+        tri.quad_method = "BEAUTY"
+        tri.ngon_method = "BEAUTY"
+        bpy.ops.object.modifier_apply(modifier=tri.name)
+
+        # Add Solidify modifier to extrude the text outline upward.
+        # use_quality_normals ensures consistent extrusion direction and avoids
+        # faces being pushed downward when winding is locally inconsistent.
+        # Note: use_even_offset is intentionally omitted — it compensates corner
+        # angles using a 1/cos(half-angle) factor which blows up at very sharp
+        # concave corners (serif notches, inner angles of R, S, ...) and produces
+        # self-intersecting triangular spike geometry on the side walls.  Without
+        # even offset the extrusion uses a simple flat push in the normal
+        # direction, which is spike-free and produces the expected smooth top face.
         solidify = text_obj.modifiers.new(name="Solidify", type="SOLIDIFY")
         solidify.thickness = extrusion_height
         solidify.offset = 1.0  # Extrude only upward (positive Z)
+        solidify.use_quality_normals = True
 
         # Apply the modifier to bake the extrusion
-        bpy.context.view_layer.objects.active = text_obj
         bpy.ops.object.modifier_apply(modifier=solidify.name)
+
+        bpy.context.view_layer.objects.active = previous_active
 
         # Move to output collection (alongside the base)
         for collection in text_obj.users_collection:
