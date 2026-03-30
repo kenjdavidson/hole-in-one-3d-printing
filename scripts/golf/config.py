@@ -6,6 +6,7 @@ from enum import Enum
 BASE_OBJECT_NAME = "Hole_In_One_Base"
 OUTPUT_COLLECTION_NAME = "Hole_In_One_Output"
 CUTTERS_COLLECTION_NAME = "Hole_In_One_Cutters"
+INSERTS_COLLECTION_NAME = "Hole_In_One_Inserts"
 AUTO_SCALE_FACTOR = 0.9
 
 # Small overlap (mm) added above the plaque surface and to each cutter's

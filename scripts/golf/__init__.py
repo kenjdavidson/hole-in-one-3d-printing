@@ -21,12 +21,13 @@ Workflow
 bl_info = {
     "name": "Hole-In-One Commemorative Generator",
     "author": "Ken J. Davidson",
-    "version": (1, 1, 0),
+    "version": (1, 2, 0),
     "blender": (3, 0, 0),
     "location": "View3D > Sidebar > Golf",
     "description": (
         "Generate a 3D-printable golf course commemorative plaque from SVG traces. "
-        "Supports CARVE, EMBOSS, and ENGRAVE element strategies per layer."
+        "Supports CARVE, EMBOSS, and ENGRAVE element strategies per layer, plus a "
+        "separate Insert Builder that produces raised insert pieces for each terrain."
     ),
     "category": "Object",
 }
@@ -36,6 +37,7 @@ from . import geometry_utils
 from . import ui_panel
 from . import draft_angle       # noqa: F401 – registers the module for use by plaque_builder
 from . import element_strategy  # noqa: F401 – ensures strategy registry is populated
+from . import insert_builder    # noqa: F401 – registers the insert pipeline module
 
 
 # ── PropertyGroup ─────────────────────────────────────────────────────────────
@@ -249,12 +251,105 @@ class HOLEINONE_OT_Generate(bpy.types.Operator):
         return {"FINISHED"}
 
 
+# ── Insert-builder PropertyGroup ──────────────────────────────────────────────
+
+
+class HOLEINONE_InsertProperties(bpy.types.PropertyGroup):
+    """Scene-level properties for the Hole-In-One insert layer builder."""
+
+    plaque_width: bpy.props.FloatProperty(
+        name="Width (mm)",
+        description="Plaque width in millimetres",
+        default=100.0,
+        min=10.0,
+    )
+    plaque_height: bpy.props.FloatProperty(
+        name="Height (mm)",
+        description="Plaque height in millimetres",
+        default=140.0,
+        min=10.0,
+    )
+    plaque_thick: bpy.props.FloatProperty(
+        name="Base Thickness (mm)",
+        description="Thickness of the base plaque that receives the outermost insert",
+        default=6.0,
+        min=1.0,
+    )
+    print_layer_height: bpy.props.FloatProperty(
+        name="Print Layer Height (mm)",
+        description="Per-layer print height used to compute element and hole depths",
+        default=0.2,
+        min=0.05,
+        max=1.0,
+        precision=3,
+    )
+    insert_element_layers: bpy.props.IntProperty(
+        name="Element Layers",
+        description=(
+            "Number of print layers that determine each insert piece height. "
+            "element_height = insert_element_layers × print_layer_height"
+        ),
+        default=4,
+        min=1,
+    )
+    insert_hole_layers: bpy.props.IntProperty(
+        name="Hole Layers",
+        description=(
+            "Number of print layers that determine the depth of the receiving "
+            "hole carved into each parent piece. "
+            "hole_depth = insert_hole_layers × print_layer_height"
+        ),
+        default=2,
+        min=1,
+    )
+    insert_clearance: bpy.props.FloatProperty(
+        name="Clearance (mm)",
+        description=(
+            "Per-side gap between each insert piece and its receiving hole. "
+            "Typical values: 0.2–0.25 mm"
+        ),
+        default=0.25,
+        min=0.0,
+        max=2.0,
+        precision=3,
+    )
+    use_shrink_element: bpy.props.BoolProperty(
+        name="Shrink Insert",
+        description=(
+            "When enabled, shrink the insert outline by the clearance amount "
+            "so it fits inside a hole sized to the raw SVG outline. "
+            "When disabled, keep the insert at full SVG size and grow the "
+            "receiving hole instead"
+        ),
+        default=True,
+    )
+
+
+# ── Insert-builder Operator ───────────────────────────────────────────────────
+
+
+class HOLEINONE_OT_BuildInserts(bpy.types.Operator):
+    """Build printable insert pieces from the imported SVG golf-course layers"""
+
+    bl_idname = "object.build_inserts"
+    bl_label = "Build Insert Pieces"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        insert_builder.build_inserts(context.scene.golf_insert_props)
+        self.report({"INFO"}, "Insert pieces generated successfully")
+        return {"FINISHED"}
+
+
 # ── Registration ──────────────────────────────────────────────────────────────
 
 _classes = (
     HOLEINONE_Properties,
     HOLEINONE_OT_Generate,
+    HOLEINONE_InsertProperties,
+    HOLEINONE_OT_BuildInserts,
     ui_panel.HOLEINONE_PT_Panel,
+    ui_panel.HOLEINONE_PT_InsertPanel,
 )
 
 
@@ -264,12 +359,16 @@ def register():
     bpy.types.Scene.golf_props = bpy.props.PointerProperty(
         type=HOLEINONE_Properties
     )
+    bpy.types.Scene.golf_insert_props = bpy.props.PointerProperty(
+        type=HOLEINONE_InsertProperties
+    )
 
 
 def unregister():
     for cls in reversed(_classes):
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.golf_props
+    del bpy.types.Scene.golf_insert_props
 
 
 if __name__ == "__main__":

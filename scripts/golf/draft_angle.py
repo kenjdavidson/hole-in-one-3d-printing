@@ -183,6 +183,63 @@ def apply_flat_outset(obj, offset_mm):
     obj.data.update()
 
 
+def apply_flat_inset(obj, inset_mm):
+    """Contract a flat outline by a constant XY inset.
+
+    This is the inverse of :func:`apply_flat_outset`: boundary loops are moved
+    *inward* by *inset_mm* millimetres, reducing the planar extent of the
+    outline.  Use this to shrink an insert so it fits inside a parent receiving
+    hole with the desired clearance.
+
+    Args:
+        obj:      The Blender mesh object whose boundary loops will be moved.
+        inset_mm: Distance in mm to move each boundary edge inward.  A value
+                  of 0 or less is silently ignored.
+    """
+    if inset_mm <= 0.0:
+        return
+
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.verts.ensure_lookup_table()
+    bm.edges.ensure_lookup_table()
+
+    if not bm.verts:
+        bm.free()
+        return
+
+    original_coords = [vertex.co.copy() for vertex in bm.verts]
+
+    def _bbox_area():
+        xs = [vertex.co.x for vertex in bm.verts]
+        ys = [vertex.co.y for vertex in bm.verts]
+        return (max(xs) - min(xs)) * (max(ys) - min(ys))
+
+    boundary_edges = [edge for edge in bm.edges if len(edge.link_faces) == 1]
+    loops = _iter_boundary_loops(boundary_edges) if boundary_edges else []
+    if not loops:
+        bm.free()
+        return
+
+    before_area = _bbox_area()
+    if not _offset_loops_xy(bm, loops, -inset_mm):
+        bm.free()
+        return
+
+    after_area = _bbox_area()
+    if after_area > before_area:
+        # Inset should reduce the bounding area; if it grew the sign was wrong
+        for vertex, original in zip(bm.verts, original_coords):
+            vertex.co = original
+        if not _offset_loops_xy(bm, loops, inset_mm):
+            bm.free()
+            return
+
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+
+
 def apply_top_taper(obj, taper_width_mm):
     """Offset only the top perimeter loop(s) outward to create draft walls."""
     if taper_width_mm <= 0.0:

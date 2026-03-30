@@ -2,7 +2,7 @@
 
 import bpy
 
-from .config import CUTTERS_COLLECTION_NAME, OUTPUT_COLLECTION_NAME
+from .config import CUTTERS_COLLECTION_NAME, INSERTS_COLLECTION_NAME, OUTPUT_COLLECTION_NAME
 
 
 def ensure_output_collection():
@@ -23,6 +23,19 @@ def ensure_cutters_collection():
     collection = bpy.data.collections.get(CUTTERS_COLLECTION_NAME)
     if collection is None:
         collection = bpy.data.collections.new(CUTTERS_COLLECTION_NAME)
+
+    root = bpy.context.scene.collection
+    if collection.name not in root.children:
+        root.children.link(collection)
+
+    return collection
+
+
+def ensure_inserts_collection():
+    """Return the root-level collection that holds generated insert objects."""
+    collection = bpy.data.collections.get(INSERTS_COLLECTION_NAME)
+    if collection is None:
+        collection = bpy.data.collections.new(INSERTS_COLLECTION_NAME)
 
     root = bpy.context.scene.collection
     if collection.name not in root.children:

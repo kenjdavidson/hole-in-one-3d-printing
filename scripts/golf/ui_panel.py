@@ -86,3 +86,53 @@ class HOLEINONE_PT_Panel(bpy.types.Panel):
 
         layout.separator()
         layout.operator("object.generate_commemorative", icon="MESH_CUBE")
+
+
+class HOLEINONE_PT_InsertPanel(bpy.types.Panel):
+    """Sidebar panel for the Insert Layer Builder.
+
+    Generates a set of printable raised insert pieces (one per terrain layer)
+    that slot into corresponding holes in their parent layer.  The finished
+    inserts can be glued together to create a multi-colour, raised design.
+    """
+
+    bl_label = "Insert Layer Builder"
+    bl_idname = "HOLEINONE_PT_InsertPanel"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Golf"
+
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.golf_insert_props
+
+        col = layout.column(align=True)
+        col.label(text="Plaque Dimensions:")
+        col.prop(props, "plaque_width")
+        col.prop(props, "plaque_height")
+        col.prop(props, "plaque_thick")
+
+        layout.separator()
+        col = layout.column(align=True)
+        col.label(text="Print Settings:")
+        col.prop(props, "print_layer_height")
+        col.prop(props, "insert_element_layers")
+        col.prop(props, "insert_hole_layers")
+
+        # Show computed element height and hole depth as read-only info.
+        element_h = props.insert_element_layers * props.print_layer_height
+        hole_d = props.insert_hole_layers * props.print_layer_height
+        info = col.column(align=True)
+        info.enabled = False
+        info.label(text=f"Element height: {element_h:.2f} mm")
+        info.label(text=f"Hole depth:     {hole_d:.2f} mm")
+
+        layout.separator()
+        col = layout.column(align=True)
+        col.label(text="Fit / Clearance:")
+        col.prop(props, "insert_clearance")
+        col.prop(props, "use_shrink_element")
+
+        layout.separator()
+        layout.operator("object.build_inserts", icon="MESH_CUBE")
+
