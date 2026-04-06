@@ -195,6 +195,13 @@ def _find_max_safe_inset(source_obj, target_inset_mm, iterations=12):
     return best
 
 
+def _get_source_inset_amount(source_obj, source_clearance_map, default_clearance):
+    """Return the effective inset used for a source object (mm)."""
+    if source_obj is None:
+        return 0.0
+    return float(source_clearance_map.get(source_obj.name, default_clearance))
+
+
 def _carveable_layers_sorted():
     """Return CARVE-type layers sorted by depth ascending (shallowest / outermost first)."""
     return sorted(
@@ -583,9 +590,21 @@ def build_inserts(props):
             f"_InsertBaseHole_{outermost_prefix}",
             cutters_collection,
         )
-        if clearance > 0.0 and not use_shrink:
-            # Grow base hole only when hole-growth mode is selected.
-            apply_flat_outset(hole_cutter, clearance)
+        if clearance > 0.0:
+            if not use_shrink:
+                # Grow base hole only when hole-growth mode is selected.
+                apply_flat_outset(hole_cutter, clearance)
+            else:
+                # If an insert had to use reduced safe inset, grow the hole by
+                # the remainder so the final fit still equals requested gap.
+                inset_amount = _get_source_inset_amount(
+                    svg_src,
+                    source_clearance_map,
+                    clearance,
+                )
+                compensation = max(0.0, clearance - inset_amount)
+                if compensation > 0.0:
+                    apply_flat_outset(hole_cutter, compensation)
         # Position cutter at the top surface of the base and extend downward.
         hole_cutter.location.z = plaque_thick / 2.0 + CUTTER_TOP_POKE_MM
         _apply_solidify_and_bake(
@@ -659,10 +678,23 @@ def build_inserts(props):
                         f"_InsertHole_{prefix}_{inner_prefix}_{inner_index:02d}",
                         cutters_collection,
                     )
-                    # When growing holes rather than shrinking inserts, expand
-                    # the inner cutout so the child insert fits with clearance.
-                    if clearance > 0.0 and not use_shrink:
-                        apply_flat_outset(inner_cutter, clearance)
+                    if clearance > 0.0:
+                        if not use_shrink:
+                            # When growing holes rather than shrinking inserts,
+                            # expand the inner cutout so the child insert fits
+                            # with clearance.
+                            apply_flat_outset(inner_cutter, clearance)
+                        else:
+                            # Maintain requested fit even when this child layer
+                            # needed reduced inset to avoid invalid geometry.
+                            inset_amount = _get_source_inset_amount(
+                                inner_src,
+                                source_clearance_map,
+                                clearance,
+                            )
+                            compensation = max(0.0, clearance - inset_amount)
+                            if compensation > 0.0:
+                                apply_flat_outset(inner_cutter, compensation)
                     # Position the cutter above the insert top and cut only a
                     # pocket depth (hole_layers), leaving lower parent layers
                     # intact so stacked elements preserve visible height steps.
