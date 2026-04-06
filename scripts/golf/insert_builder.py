@@ -160,6 +160,61 @@ def _apply_flat_inset_safe(obj, inset_mm):
     return True
 
 
+def _apply_flat_outset_safe(obj, outset_mm):
+    """Outset with rollback when the resulting outline self-intersects."""
+    if obj is None or obj.data is None or outset_mm <= 0.0:
+        return False
+
+    original_coords = [vertex.co.copy() for vertex in obj.data.vertices]
+    apply_flat_outset(obj, outset_mm)
+
+    if _has_xy_self_intersections(obj):
+        for vertex, original in zip(obj.data.vertices, original_coords):
+            vertex.co = original
+        obj.data.update()
+        return False
+
+    return True
+
+
+def _apply_uniform_xy_shrink(obj, per_side_mm):
+    """Uniformly shrink a flat XY outline about its centroid by per-side mm."""
+    if obj is None or obj.data is None or per_side_mm <= 0.0:
+        return 0.0
+
+    vertices = getattr(obj.data, "vertices", None)
+    if not vertices:
+        return 0.0
+
+    min_x = min(vertex.co.x for vertex in vertices)
+    max_x = max(vertex.co.x for vertex in vertices)
+    min_y = min(vertex.co.y for vertex in vertices)
+    max_y = max(vertex.co.y for vertex in vertices)
+
+    width = max_x - min_x
+    height = max_y - min_y
+    if width <= 1e-9 or height <= 1e-9:
+        return 0.0
+
+    # Prevent pathological collapse on very thin islands.
+    max_per_side = min(width, height) * 0.45
+    applied = min(per_side_mm, max_per_side)
+    if applied <= 0.0:
+        return 0.0
+
+    scale_x = max(0.01, (width - (2.0 * applied)) / width)
+    scale_y = max(0.01, (height - (2.0 * applied)) / height)
+    center_x = (min_x + max_x) * 0.5
+    center_y = (min_y + max_y) * 0.5
+
+    for vertex in vertices:
+        vertex.co.x = center_x + (vertex.co.x - center_x) * scale_x
+        vertex.co.y = center_y + (vertex.co.y - center_y) * scale_y
+
+    obj.data.update()
+    return applied
+
+
 def _find_max_safe_inset(source_obj, target_inset_mm, iterations=12):
     """Return the largest inset <= target that avoids outline self-intersection."""
     if source_obj is None or source_obj.data is None or target_inset_mm <= 0.0:
@@ -185,6 +240,41 @@ def _find_max_safe_inset(source_obj, target_inset_mm, iterations=12):
         temp_obj.data = source_obj.data.copy()
         try:
             if _apply_flat_inset_safe(temp_obj, mid):
+                best = mid
+                low = mid
+            else:
+                high = mid
+        finally:
+            _dispose_temp_object(temp_obj)
+
+    return best
+
+
+def _find_max_safe_outset(source_obj, target_outset_mm, iterations=12):
+    """Return the largest outset <= target that avoids outline self-intersection."""
+    if source_obj is None or source_obj.data is None or target_outset_mm <= 0.0:
+        return 0.0
+
+    # Fast path: requested compensation already works.
+    temp_obj = source_obj.copy()
+    temp_obj.data = source_obj.data.copy()
+    try:
+        if _apply_flat_outset_safe(temp_obj, target_outset_mm):
+            return target_outset_mm
+    finally:
+        _dispose_temp_object(temp_obj)
+
+    # Binary search for the largest safe outset.
+    low = 0.0
+    high = target_outset_mm
+    best = 0.0
+
+    for _ in range(max(1, int(iterations))):
+        mid = (low + high) * 0.5
+        temp_obj = source_obj.copy()
+        temp_obj.data = source_obj.data.copy()
+        try:
+            if _apply_flat_outset_safe(temp_obj, mid):
                 best = mid
                 low = mid
             else:
@@ -535,12 +625,24 @@ def build_inserts(props):
     ]
 
     source_clearance_map = {}
+    source_compensation_map = {}
+    source_extra_shrink_map = {}
+    fit_validation_rows = []
     if use_shrink and clearance > 0.0:
         adjusted_sources = []
         for prefix, _ in present_layers:
             for source in (obj for obj in all_svg_objs if obj.name.startswith(prefix)):
                 safe_clearance = _find_max_safe_inset(source, clearance)
                 source_clearance_map[source.name] = safe_clearance
+                compensation_needed = max(0.0, clearance - safe_clearance)
+                safe_compensation = 0.0
+                if compensation_needed > 0.0:
+                    safe_compensation = _find_max_safe_outset(source, compensation_needed)
+                source_compensation_map[source.name] = safe_compensation
+
+                achieved_clearance = safe_clearance + safe_compensation
+                source_extra_shrink_map[source.name] = max(0.0, clearance - achieved_clearance)
+
                 if safe_clearance + 1e-6 < clearance:
                     adjusted_sources.append((source.name, safe_clearance))
 
@@ -590,10 +692,14 @@ def build_inserts(props):
             f"_InsertBaseHole_{outermost_prefix}",
             cutters_collection,
         )
+        inset_amount = 0.0
+        compensation = 0.0
+        applied_compensation = 0.0
         if clearance > 0.0:
             if not use_shrink:
                 # Grow base hole only when hole-growth mode is selected.
                 apply_flat_outset(hole_cutter, clearance)
+                applied_compensation = clearance
             else:
                 # If an insert had to use reduced safe inset, grow the hole by
                 # the remainder so the final fit still equals requested gap.
@@ -604,7 +710,35 @@ def build_inserts(props):
                 )
                 compensation = max(0.0, clearance - inset_amount)
                 if compensation > 0.0:
-                    apply_flat_outset(hole_cutter, compensation)
+                    safe_compensation = source_compensation_map.get(svg_src.name, 0.0)
+                    if safe_compensation > 0.0:
+                        apply_flat_outset(hole_cutter, safe_compensation)
+                        applied_compensation = safe_compensation
+                    else:
+                        print(
+                            "[golf_tools] Compensation outset skipped for",
+                            hole_cutter.name,
+                            "(requested=",
+                            round(compensation, 4),
+                            ")",
+                        )
+
+        if clearance > 0.0 and use_shrink:
+            extra_shrink = source_extra_shrink_map.get(svg_src.name, 0.0)
+            achieved_clearance = inset_amount + applied_compensation + extra_shrink
+            fit_validation_rows.append(
+                (
+                    "Base",
+                    outermost_prefix,
+                    svg_src.name,
+                    clearance,
+                    achieved_clearance,
+                    inset_amount,
+                    compensation,
+                    applied_compensation,
+                    extra_shrink,
+                )
+            )
         # Position cutter at the top surface of the base and extend downward.
         hole_cutter.location.z = plaque_thick / 2.0 + CUTTER_TOP_POKE_MM
         _apply_solidify_and_bake(
@@ -652,6 +786,23 @@ def build_inserts(props):
                         ")",
                     )
 
+                # Fit-first fallback: if safe inset + safe pocket compensation
+                # still cannot meet requested clearance, uniformly shrink the
+                # child insert a bit more so the assembled fit is not tighter
+                # than requested.
+                extra_shrink = source_extra_shrink_map.get(svg_src.name, 0.0)
+                if extra_shrink > 0.0:
+                    applied_extra = _apply_uniform_xy_shrink(insert, extra_shrink)
+                    if applied_extra + 1e-6 < extra_shrink:
+                        print(
+                            "[golf_tools] Extra shrink clamped for",
+                            insert.name,
+                            "requested=",
+                            round(extra_shrink, 4),
+                            "applied=",
+                            round(applied_extra, 4),
+                        )
+
             # Extrude the flat outline upward to element_height.
             # offset = 1.0 → original face (Z=0) becomes the bottom face;
             # the solidify extends upward.
@@ -678,12 +829,16 @@ def build_inserts(props):
                         f"_InsertHole_{prefix}_{inner_prefix}_{inner_index:02d}",
                         cutters_collection,
                     )
+                    inset_amount = 0.0
+                    compensation = 0.0
+                    applied_compensation = 0.0
                     if clearance > 0.0:
                         if not use_shrink:
                             # When growing holes rather than shrinking inserts,
                             # expand the inner cutout so the child insert fits
                             # with clearance.
                             apply_flat_outset(inner_cutter, clearance)
+                            applied_compensation = clearance
                         else:
                             # Maintain requested fit even when this child layer
                             # needed reduced inset to avoid invalid geometry.
@@ -694,7 +849,38 @@ def build_inserts(props):
                             )
                             compensation = max(0.0, clearance - inset_amount)
                             if compensation > 0.0:
-                                apply_flat_outset(inner_cutter, compensation)
+                                safe_compensation = source_compensation_map.get(
+                                    inner_src.name,
+                                    0.0,
+                                )
+                                if safe_compensation > 0.0:
+                                    apply_flat_outset(inner_cutter, safe_compensation)
+                                    applied_compensation = safe_compensation
+                                else:
+                                    print(
+                                        "[golf_tools] Compensation outset skipped for",
+                                        inner_cutter.name,
+                                        "(requested=",
+                                        round(compensation, 4),
+                                        ")",
+                                    )
+
+                    if clearance > 0.0 and use_shrink:
+                        extra_shrink = source_extra_shrink_map.get(inner_src.name, 0.0)
+                        achieved_clearance = inset_amount + applied_compensation + extra_shrink
+                        fit_validation_rows.append(
+                            (
+                                prefix,
+                                inner_prefix,
+                                inner_src.name,
+                                clearance,
+                                achieved_clearance,
+                                inset_amount,
+                                compensation,
+                                applied_compensation,
+                                extra_shrink,
+                            )
+                        )
                     # Position the cutter above the insert top and cut only a
                     # pocket depth (hole_layers), leaving lower parent layers
                     # intact so stacked elements preserve visible height steps.
@@ -790,4 +976,28 @@ def build_inserts(props):
         "strap_holes=", len(strap_hole_objs),
         "border=", border_added,
     )
+
+    if clearance > 0.0 and use_shrink and fit_validation_rows:
+        fit_tolerance = 0.01
+        tight_rows = [
+            row for row in fit_validation_rows
+            if row[4] + fit_tolerance < row[3]
+        ]
+        if tight_rows:
+            print("[golf_tools] FIT VALIDATION: WARN -- some boundaries are tighter than requested")
+            for parent, child, source_name, requested, achieved, inset_amt, needed, applied, extra_shrink in tight_rows:
+                print(
+                    "  -",
+                    f"{parent}->{child}",
+                    source_name,
+                    "requested=", round(requested, 4),
+                    "achieved=", round(achieved, 4),
+                    "inset=", round(inset_amt, 4),
+                    "needed_outset=", round(needed, 4),
+                    "applied_outset=", round(applied, 4),
+                    "extra_shrink=", round(extra_shrink, 4),
+                )
+            print("[golf_tools] Recommendation: increase insert_clearance slightly or test-fit these pairs first")
+        else:
+            print("[golf_tools] FIT VALIDATION: PASS -- all boundaries met requested clearance")
 
