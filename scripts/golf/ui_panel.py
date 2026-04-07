@@ -140,5 +140,14 @@ class HOLEINONE_PT_InsertPanel(bpy.types.Panel):
         col.prop(props, "text_extrusion_height")
 
         layout.separator()
+        col = layout.column(align=True)
+        col.label(text="Embossed Border (Base):")
+        col.prop(props, "use_embossed_border")
+        sub = col.column(align=True)
+        sub.enabled = props.use_embossed_border
+        sub.prop(props, "border_inset")
+        sub.prop(props, "border_width")
+
+        layout.separator()
         layout.operator("object.build_inserts", icon="MESH_CUBE")
 

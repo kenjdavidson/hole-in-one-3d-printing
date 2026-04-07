@@ -343,6 +343,27 @@ class HOLEINONE_InsertProperties(bpy.types.PropertyGroup):
         ),
         default="EMBOSS",
     )
+    use_embossed_border: bpy.props.BoolProperty(
+        name="Embossed Border",
+        description="Add a raised border ring around the outside of the base",
+        default=False,
+    )
+    border_inset: bpy.props.FloatProperty(
+        name="Border Inset (mm)",
+        description="Inset distance from the base edge to the outer border edge",
+        default=0.0,
+        min=0.0,
+        max=20.0,
+        precision=3,
+    )
+    border_width: bpy.props.FloatProperty(
+        name="Border Width (mm)",
+        description="Width of the raised border ring",
+        default=0.8,
+        min=0.05,
+        max=20.0,
+        precision=3,
+    )
 
 
 # ── Insert-builder Operator ───────────────────────────────────────────────────

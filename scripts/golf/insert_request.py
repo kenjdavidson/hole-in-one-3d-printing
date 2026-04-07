@@ -87,6 +87,15 @@ class InsertRequest:
     text_extrusion_height: float = 1.0
     """Emboss height / engrave depth (mm) for Text.* on the insert base."""
 
+    use_embossed_border: bool = False
+    """When ``True``, add a raised border ring on the base top surface."""
+
+    border_inset: float = 0.0
+    """Inset from the base edge to the border outer edge (mm)."""
+
+    border_width: float = 0.8
+    """Raised border width measured inward from the outer border edge (mm)."""
+
     # ── Validation ────────────────────────────────────────────────────────────
 
     def __post_init__(self):
@@ -101,4 +110,12 @@ class InsertRequest:
         if self.insert_hole_layers < 1:
             raise ValueError(
                 f"insert_hole_layers must be >= 1, got {self.insert_hole_layers!r}"
+            )
+        if self.border_inset < 0.0:
+            raise ValueError(
+                f"border_inset must be >= 0, got {self.border_inset!r}"
+            )
+        if self.border_width <= 0.0:
+            raise ValueError(
+                f"border_width must be > 0, got {self.border_width!r}"
             )
