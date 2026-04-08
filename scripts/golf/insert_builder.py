@@ -39,6 +39,7 @@ from .config import (
     PLAQUE_BASE_PREFIXES,
     STRAP_HOLE_PREFIXES,
 )
+from .container_builder import build_container
 from .cutter_pipeline import (
     CUTTER_TOP_POKE_MM,
     cleanup_base_mesh,
@@ -53,6 +54,7 @@ from .svg_utils import find_plaque_base, sanitize_geometry
 _INSERT_DISPLAY_GAP_MM = 10.0
 # Extra clearance between the base and the first displayed insert (mm).
 _BASE_INSERT_START_CLEARANCE_MM = 0.5
+_BORDER_SOCKET_MIN_WIDTH_MM = 0.05
 
 
 def _dispose_temp_object(obj):
@@ -60,12 +62,12 @@ def _dispose_temp_object(obj):
     if obj is None:
         return
 
-    mesh_data = obj.data if getattr(obj, "data", None) is not None else None
+    # Keep cleanup conservative for Blender stability: remove object only.
     if obj.name in bpy.data.objects:
-        bpy.data.objects.remove(obj, do_unlink=True)
-
-    if mesh_data is not None and mesh_data.users == 0 and mesh_data.name in bpy.data.meshes:
-        bpy.data.meshes.remove(mesh_data)
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except RuntimeError:
+            pass
 
 
 def _xy_segments_intersect(p1, p2, q1, q2, eps=1e-9):
@@ -292,6 +294,25 @@ def _get_source_inset_amount(source_obj, source_clearance_map, default_clearance
     return float(source_clearance_map.get(source_obj.name, default_clearance))
 
 
+def _extract_name_layer_number(object_name):
+    """Return numeric layer parsed from object name tokens like *.001.*."""
+    if not object_name:
+        return None
+
+    parts = str(object_name).split(".")
+    for token in parts[1:]:
+        if token.isdigit():
+            return int(token)
+    return None
+
+
+def _source_name(obj):
+    """Return stable imported object name preserved during sanitize step."""
+    if obj is None:
+        return ""
+    return str(obj.get("_golf_src_name", obj.name))
+
+
 def _carveable_layers_sorted():
     """Return CARVE-type layers sorted by depth ascending (shallowest / outermost first)."""
     return sorted(
@@ -425,6 +446,76 @@ def _resolve_text_element_type(props):
     return ElementType.EMBOSS
 
 
+def _create_border_outline_objects(
+    base_x,
+    base_y,
+    plaque_base_svg,
+    collection,
+    outer_name,
+    inner_name,
+    outer_inset,
+    inner_inset,
+):
+    """Create flat outer/inner border outline objects from plaque geometry."""
+    if inner_inset <= outer_inset + _BORDER_SOCKET_MIN_WIDTH_MM:
+        return None, None
+
+    if plaque_base_svg is not None:
+        outer_obj = _duplicate_mesh_obj(plaque_base_svg, outer_name, collection)
+        if outer_inset > 0.0 and not _apply_flat_inset_safe(outer_obj, outer_inset):
+            _dispose_temp_object(outer_obj)
+            return None, None
+
+        inner_obj = _duplicate_mesh_obj(plaque_base_svg, inner_name, collection)
+        if inner_inset > 0.0 and not _apply_flat_inset_safe(inner_obj, inner_inset):
+            _dispose_temp_object(outer_obj)
+            _dispose_temp_object(inner_obj)
+            return None, None
+        return outer_obj, inner_obj
+
+    outer_x = float(base_x) - (2.0 * outer_inset)
+    outer_y = float(base_y) - (2.0 * outer_inset)
+    inner_x = float(base_x) - (2.0 * inner_inset)
+    inner_y = float(base_y) - (2.0 * inner_inset)
+    if min(outer_x, outer_y, inner_x, inner_y) <= 0.0:
+        return None, None
+    if inner_x >= outer_x or inner_y >= outer_y:
+        return None, None
+
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    outer_obj = bpy.context.active_object
+    outer_obj.name = outer_name
+    move_object_to_collection(outer_obj, collection)
+    outer_obj.scale = (outer_x, outer_y, 1.0)
+    bpy.ops.object.transform_apply(scale=True)
+    outer_obj.location = (0.0, 0.0, 0.0)
+
+    bpy.ops.mesh.primitive_cube_add(size=1)
+    inner_obj = bpy.context.active_object
+    inner_obj.name = inner_name
+    move_object_to_collection(inner_obj, collection)
+    inner_obj.scale = (inner_x, inner_y, 1.0)
+    bpy.ops.object.transform_apply(scale=True)
+    inner_obj.location = (0.0, 0.0, 0.0)
+    return outer_obj, inner_obj
+
+
+def _solidify_border_ring(outer_obj, inner_obj, thickness, z_location):
+    """Turn flat outer/inner outlines into a ring mesh at the target Z."""
+    _apply_solidify_and_bake(outer_obj, thickness, offset=1.0)
+    _cleanup_insert_mesh(outer_obj)
+    outer_obj.location.z = z_location
+
+    _apply_solidify_and_bake(inner_obj, thickness + CUTTER_TOP_POKE_MM + CUTTER_EPSILON, offset=1.0)
+    _cleanup_insert_mesh(inner_obj)
+    inner_obj.location.z = z_location - CUTTER_TOP_POKE_MM
+
+    _boolean_subtract(outer_obj, inner_obj)
+    _cleanup_insert_mesh(outer_obj)
+    _dispose_temp_object(inner_obj)
+    return outer_obj
+
+
 def _apply_text_to_base(
     props,
     all_svg_objs,
@@ -467,103 +558,116 @@ def _apply_embossed_border_to_base(
     plaque_base_svg,
     inserts_collection,
     cutters_collection,
+    border_socket_depth,
 ):
     """Optionally add a raised rectangular border ring to the insert base."""
     if not getattr(props, "use_embossed_border", False):
-        return False
+        return False, []
 
     border_height = float(max(0.0, getattr(props, "text_extrusion_height", 0.0)))
     border_inset = float(max(0.0, getattr(props, "border_inset", 0.0)))
     border_width = float(max(0.0, getattr(props, "border_width", 0.8)))
+    separate_border_insert = bool(getattr(props, "separate_border_insert", False))
 
     if border_height <= 0.0 or border_width <= 0.0:
         print("[golf_tools] Embossed border skipped: non-positive height/width")
-        return False
+        return False, []
 
-    if plaque_base_svg is not None:
-        # Follow the imported plaque outline (supports circles/organic borders).
-        border_obj = _duplicate_mesh_obj(
-            plaque_base_svg,
-            "Insert_Base_Border",
-            inserts_collection,
-        )
-        if border_inset > 0.0 and not _apply_flat_inset_safe(border_obj, border_inset):
-            print("[golf_tools] Embossed border skipped: invalid outer inset")
-            return False
-
-        inner_cutter = _duplicate_mesh_obj(
-            plaque_base_svg,
-            "_Insert_Base_BorderInnerCut",
-            cutters_collection,
-        )
-        inner_inset = border_inset + border_width
-        if inner_inset > 0.0 and not _apply_flat_inset_safe(inner_cutter, inner_inset):
-            print("[golf_tools] Embossed border skipped: invalid inner inset")
-            return False
-
-        _apply_solidify_and_bake(border_obj, border_height, offset=1.0)
-        _cleanup_insert_mesh(border_obj)
-        border_obj.location.z = plaque_thick / 2.0
-
-        _apply_solidify_and_bake(
-            inner_cutter,
-            border_height + CUTTER_TOP_POKE_MM * 2.0 + CUTTER_EPSILON,
-            offset=1.0,
-        )
-        _cleanup_insert_mesh(inner_cutter)
-        inner_cutter.location.z = plaque_thick / 2.0 - CUTTER_TOP_POKE_MM
-    else:
-        # Fallback for legacy SVGs without a dedicated plaque outline.
-        outer_x = float(base_x) - (2.0 * border_inset)
-        outer_y = float(base_y) - (2.0 * border_inset)
-        if outer_x <= 0.0 or outer_y <= 0.0:
-            print("[golf_tools] Embossed border skipped: inset exceeds base size")
-            return False
-
-        inner_x = outer_x - (2.0 * border_width)
-        inner_y = outer_y - (2.0 * border_width)
-        if inner_x <= 0.0 or inner_y <= 0.0:
-            print("[golf_tools] Embossed border skipped: width too large for inset/base")
-            return False
-
-        bpy.ops.mesh.primitive_cube_add(size=1)
-        border_obj = bpy.context.active_object
-        border_obj.name = "Insert_Base_Border"
-        move_object_to_collection(border_obj, inserts_collection)
-        border_obj.scale = (outer_x, outer_y, border_height)
-        bpy.ops.object.transform_apply(scale=True)
-        border_obj.location.z = plaque_thick / 2.0 + border_height / 2.0
-
-        bpy.ops.mesh.primitive_cube_add(size=1)
-        inner_cutter = bpy.context.active_object
-        inner_cutter.name = "_Insert_Base_BorderInnerCut"
-        move_object_to_collection(inner_cutter, cutters_collection)
-        inner_cutter.scale = (
-            inner_x,
-            inner_y,
-            border_height + CUTTER_TOP_POKE_MM * 2.0 + CUTTER_EPSILON,
-        )
-        bpy.ops.object.transform_apply(scale=True)
-        inner_cutter.location.z = border_obj.location.z
-
+    inner_inset = border_inset + border_width
+    border_pieces = []
     text_cfg = COLOR_MAP.get("Text")
+
+    if separate_border_insert:
+        fit_clearance = float(max(0.0, getattr(props, "insert_clearance", 0.0)))
+        if getattr(props, "use_shrink_element", True):
+            piece_outer_inset = border_inset + fit_clearance
+            piece_inner_inset = inner_inset - fit_clearance
+            pocket_outer_inset = border_inset
+            pocket_inner_inset = inner_inset
+        else:
+            piece_outer_inset = border_inset
+            piece_inner_inset = inner_inset
+            pocket_outer_inset = max(0.0, border_inset - fit_clearance)
+            pocket_inner_inset = inner_inset + fit_clearance
+
+        piece_outer, piece_inner = _create_border_outline_objects(
+            base_x,
+            base_y,
+            plaque_base_svg,
+            inserts_collection,
+            "Insert_Base_Border",
+            "_Insert_Base_BorderInnerCut",
+            piece_outer_inset,
+            piece_inner_inset,
+        )
+        if piece_outer is None or piece_inner is None:
+            print("[golf_tools] Separate border skipped: invalid border insert geometry")
+            return False, []
+
+        piece_thickness = border_height + border_socket_depth
+        border_obj = _solidify_border_ring(piece_outer, piece_inner, piece_thickness, 0.0)
+        border_pieces.append(border_obj)
+
+        pocket_outer, pocket_inner = _create_border_outline_objects(
+            base_x,
+            base_y,
+            plaque_base_svg,
+            cutters_collection,
+            "_Insert_Base_BorderPocket",
+            "_Insert_Base_BorderPocketInnerCut",
+            pocket_outer_inset,
+            pocket_inner_inset,
+        )
+        if pocket_outer is None or pocket_inner is None:
+            print("[golf_tools] Separate border skipped: invalid border pocket geometry")
+            _dispose_temp_object(border_obj)
+            return False, []
+
+        pocket_cutter = _solidify_border_ring(
+            pocket_outer,
+            pocket_inner,
+            border_socket_depth + CUTTER_TOP_POKE_MM + CUTTER_EPSILON,
+            plaque_thick / 2.0 - border_socket_depth,
+        )
+        if is_valid_cutter_mesh(pocket_cutter):
+            _boolean_subtract(base, pocket_cutter)
+        pocket_cutter.display_type = "WIRE"
+        pocket_cutter.hide_render = True
+    else:
+        border_outer, inner_cutter = _create_border_outline_objects(
+            base_x,
+            base_y,
+            plaque_base_svg,
+            inserts_collection,
+            "Insert_Base_Border",
+            "_Insert_Base_BorderInnerCut",
+            border_inset,
+            inner_inset,
+        )
+        if border_outer is None or inner_cutter is None:
+            print("[golf_tools] Embossed border skipped: invalid border geometry")
+            return False, []
+
+        border_obj = _solidify_border_ring(
+            border_outer,
+            inner_cutter,
+            border_height,
+            plaque_thick / 2.0,
+        )
+        _boolean_union(base, border_obj, name_prefix="InsertBorder")
+        border_obj.hide_render = True
+
     if text_cfg is not None and not border_obj.data.materials:
         border_obj.data.materials.append(setup_material("Text", text_cfg.color))
-
-    _boolean_subtract(border_obj, inner_cutter)
-    _boolean_union(base, border_obj, name_prefix="InsertBorder")
-
-    inner_cutter.display_type = "WIRE"
-    inner_cutter.hide_render = True
-    border_obj.hide_render = True
 
     print(
         "[golf_tools] Embossed border added:",
         "inset=", round(border_inset, 3),
         "width=", round(border_width, 3),
         "height=", round(border_height, 3),
+        "separate=", separate_border_insert,
     )
-    return True
+    return True, border_pieces
 
 
 def build_inserts(props):
@@ -627,7 +731,10 @@ def build_inserts(props):
     source_clearance_map = {}
     source_compensation_map = {}
     source_extra_shrink_map = {}
+    source_extra_shrink_applied_map = {}
     fit_validation_rows = []
+    fit_compromises_made = False
+    fit_compromise_rows = []
     if use_shrink and clearance > 0.0:
         adjusted_sources = []
         for prefix, _ in present_layers:
@@ -644,7 +751,7 @@ def build_inserts(props):
                 source_extra_shrink_map[source.name] = max(0.0, clearance - achieved_clearance)
 
                 if safe_clearance + 1e-6 < clearance:
-                    adjusted_sources.append((source.name, safe_clearance))
+                    adjusted_sources.append((_source_name(source), safe_clearance))
 
         if adjusted_sources:
             print("[golf_tools] Clearance reduced for invalid inset outlines:")
@@ -672,6 +779,14 @@ def build_inserts(props):
         base_y = float(props.plaque_height)
 
     plaque_thick = float(props.plaque_thick)
+    border_socket_depth = min(effective_hole_depth, plaque_thick)
+    deep_layer_bias = float(max(0.0, getattr(props, "deep_layer_clearance_bias", 0.0)))
+    deep_layer_prefixes = {"Green", "Tee", "Sand", "Water"}
+
+    source_layer_map = {}
+    for prefix, _ in present_layers:
+        for source in (obj for obj in all_svg_objs if obj.name.startswith(prefix)):
+            source_layer_map[source.name] = _extract_name_layer_number(_source_name(source))
 
     # ── Build the base plaque with a receiving hole for the outermost layer ─
     bpy.ops.mesh.primitive_cube_add(size=1)
@@ -715,28 +830,56 @@ def build_inserts(props):
                         apply_flat_outset(hole_cutter, safe_compensation)
                         applied_compensation = safe_compensation
                     else:
-                        print(
-                            "[golf_tools] Compensation outset skipped for",
-                            hole_cutter.name,
-                            "(requested=",
-                            round(compensation, 4),
-                            ")",
-                        )
+                        local_safe = _find_max_safe_outset(hole_cutter, compensation)
+                        if local_safe > 0.0:
+                            apply_flat_outset(hole_cutter, local_safe)
+                            applied_compensation = local_safe
+                            fit_compromises_made = True
+                            fit_compromise_rows.append(
+                                (
+                                    "Base",
+                                    outermost_prefix,
+                                    _source_name(svg_src),
+                                    "compensation_clamped",
+                                    compensation - local_safe,
+                                )
+                            )
+                        else:
+                            fit_compromises_made = True
+                            fit_compromise_rows.append(
+                                (
+                                    "Base",
+                                    outermost_prefix,
+                                    _source_name(svg_src),
+                                    "compensation_skipped",
+                                    compensation,
+                                )
+                            )
+                            print(
+                                "[golf_tools] Compensation outset skipped for",
+                                hole_cutter.name,
+                                "(requested=",
+                                round(compensation, 4),
+                                ")",
+                            )
 
         if clearance > 0.0 and use_shrink:
             extra_shrink = source_extra_shrink_map.get(svg_src.name, 0.0)
-            achieved_clearance = inset_amount + applied_compensation + extra_shrink
+            # Use actual applied shrink if available (e.g., from later insert build).
+            # For now, record the planned value; it will be updated during insert build.
+            actual_extra_shrink = source_extra_shrink_applied_map.get(svg_src.name, extra_shrink)
+            achieved_clearance = inset_amount + applied_compensation + actual_extra_shrink
             fit_validation_rows.append(
                 (
                     "Base",
                     outermost_prefix,
-                    svg_src.name,
+                    _source_name(svg_src),
                     clearance,
                     achieved_clearance,
                     inset_amount,
                     compensation,
                     applied_compensation,
-                    extra_shrink,
+                    actual_extra_shrink,
                 )
             )
         # Position cutter at the top surface of the base and extend downward.
@@ -778,6 +921,16 @@ def build_inserts(props):
                 if inset_amount > 0.0 and not _apply_flat_inset_safe(insert, inset_amount):
                     # Last-resort numerical fallback: build the piece unshrunk
                     # rather than emitting broken topology.
+                    fit_compromises_made = True
+                    fit_compromise_rows.append(
+                        (
+                            prefix,
+                            prefix,
+                            _source_name(svg_src),
+                            "inset_skipped",
+                            inset_amount,
+                        )
+                    )
                     print(
                         "[golf_tools] Inset skipped after safety check for",
                         insert.name,
@@ -793,7 +946,18 @@ def build_inserts(props):
                 extra_shrink = source_extra_shrink_map.get(svg_src.name, 0.0)
                 if extra_shrink > 0.0:
                     applied_extra = _apply_uniform_xy_shrink(insert, extra_shrink)
+                    source_extra_shrink_applied_map[svg_src.name] = applied_extra
                     if applied_extra + 1e-6 < extra_shrink:
+                        fit_compromises_made = True
+                        fit_compromise_rows.append(
+                            (
+                                prefix,
+                                prefix,
+                                _source_name(svg_src),
+                                "extra_shrink_clamped",
+                                extra_shrink - applied_extra,
+                            )
+                        )
                         print(
                             "[golf_tools] Extra shrink clamped for",
                             insert.name,
@@ -813,17 +977,28 @@ def build_inserts(props):
             if not insert.data.materials:
                 insert.data.materials.append(mat)
 
-            # ── Cut receiving pockets for all deeper (inner) elements ─────────
-            # Layers are sorted shallowest→deepest so everything after
-            # layer_index is geometrically "inside" the current element.
-            deeper_layers = present_layers[layer_index + 1 :]
-            for inner_prefix, _ in deeper_layers:
+            # ── Cut receiving pockets for all higher-numbered name layers ─────
+            # Numeric naming (e.g., Rough.001, Fairway.002, Green.003) is the
+            # sole relationship rule: child_layer > parent_layer.
+            parent_layer_number = source_layer_map.get(svg_src.name)
+            if parent_layer_number is None:
+                continue
+
+            for inner_prefix, _ in present_layers:
+                if inner_prefix == prefix:
+                    continue
                 inner_sources = [
                     obj
                     for obj in all_svg_objs
                     if obj.name.startswith(inner_prefix)
                 ]
                 for inner_index, inner_src in enumerate(inner_sources):
+                    child_layer_number = source_layer_map.get(inner_src.name)
+                    if child_layer_number is None:
+                        continue
+                    if child_layer_number <= parent_layer_number:
+                        continue
+
                     inner_cutter = _duplicate_mesh_obj(
                         inner_src,
                         f"_InsertHole_{prefix}_{inner_prefix}_{inner_index:02d}",
@@ -857,28 +1032,83 @@ def build_inserts(props):
                                     apply_flat_outset(inner_cutter, safe_compensation)
                                     applied_compensation = safe_compensation
                                 else:
-                                    print(
-                                        "[golf_tools] Compensation outset skipped for",
-                                        inner_cutter.name,
-                                        "(requested=",
-                                        round(compensation, 4),
-                                        ")",
+                                    local_safe = _find_max_safe_outset(inner_cutter, compensation)
+                                    if local_safe > 0.0:
+                                        apply_flat_outset(inner_cutter, local_safe)
+                                        applied_compensation = local_safe
+                                        fit_compromises_made = True
+                                        fit_compromise_rows.append(
+                                            (
+                                                prefix,
+                                                inner_prefix,
+                                                _source_name(inner_src),
+                                                "compensation_clamped",
+                                                compensation - local_safe,
+                                            )
+                                        )
+                                    else:
+                                        fit_compromises_made = True
+                                        fit_compromise_rows.append(
+                                            (
+                                                prefix,
+                                                inner_prefix,
+                                                _source_name(inner_src),
+                                                "compensation_skipped",
+                                                compensation,
+                                            )
+                                        )
+                                        print(
+                                            "[golf_tools] Compensation outset skipped for",
+                                            inner_cutter.name,
+                                            "(requested=",
+                                            round(compensation, 4),
+                                            ")",
+                                        )
+
+                            # Apply deep layer bias for inner layers if geometry prevented full fit.
+                            if deep_layer_bias > 0.0 and inner_prefix in deep_layer_prefixes:
+                                safe_bias = _find_max_safe_outset(inner_cutter, deep_layer_bias)
+                                if safe_bias > 0.0:
+                                    apply_flat_outset(inner_cutter, safe_bias)
+                                    applied_compensation += safe_bias
+                                    if safe_bias + 1e-6 < deep_layer_bias:
+                                        fit_compromises_made = True
+                                        fit_compromise_rows.append(
+                                            (
+                                                prefix,
+                                                inner_prefix,
+                                                _source_name(inner_src),
+                                                "deep_bias_clamped",
+                                                deep_layer_bias - safe_bias,
+                                            )
+                                        )
+                                else:
+                                    fit_compromises_made = True
+                                    fit_compromise_rows.append(
+                                        (
+                                            prefix,
+                                            inner_prefix,
+                                            _source_name(inner_src),
+                                            "deep_bias_failed",
+                                            deep_layer_bias,
+                                        )
                                     )
 
                     if clearance > 0.0 and use_shrink:
                         extra_shrink = source_extra_shrink_map.get(inner_src.name, 0.0)
-                        achieved_clearance = inset_amount + applied_compensation + extra_shrink
+                        actual_extra_shrink = source_extra_shrink_applied_map.get(inner_src.name, extra_shrink)
+                        achieved_clearance = inset_amount + applied_compensation + actual_extra_shrink
                         fit_validation_rows.append(
                             (
                                 prefix,
                                 inner_prefix,
-                                inner_src.name,
+                                _source_name(inner_src),
                                 clearance,
                                 achieved_clearance,
                                 inset_amount,
                                 compensation,
                                 applied_compensation,
-                                extra_shrink,
+                                actual_extra_shrink,
                             )
                         )
                     # Position the cutter above the insert top and cut only a
@@ -921,7 +1151,7 @@ def build_inserts(props):
         cutters_collection,
     )
 
-    border_added = _apply_embossed_border_to_base(
+    border_added, border_pieces = _apply_embossed_border_to_base(
         props,
         base,
         plaque_thick,
@@ -930,7 +1160,12 @@ def build_inserts(props):
         plaque_base_svg,
         inserts_collection,
         cutters_collection,
+        border_socket_depth,
     )
+
+    for border_piece in border_pieces:
+        border_piece.location.x += display_x_offset
+        display_x_offset += border_piece.dimensions.x + _INSERT_DISPLAY_GAP_MM
 
     # ── Cut strap holes all the way through the base ─────────────────────────
     # StrapHole objects bypass layer logic and always produce a full-depth
@@ -939,6 +1174,10 @@ def build_inserts(props):
         obj for obj in all_svg_objs
         if any(obj.name.startswith(pre) for pre in STRAP_HOLE_PREFIXES)
     ]
+
+    if getattr(props, "generate_container", False):
+        build_container(props, base, strap_hole_objs, inserts_collection, cutters_collection)
+
     for sh_index, sh_src in enumerate(strap_hole_objs):
         sh_cutter = _duplicate_mesh_obj(
             sh_src,
@@ -983,8 +1222,8 @@ def build_inserts(props):
             row for row in fit_validation_rows
             if row[4] + fit_tolerance < row[3]
         ]
-        if tight_rows:
-            print("[golf_tools] FIT VALIDATION: WARN -- some boundaries are tighter than requested")
+        if tight_rows or fit_compromises_made:
+            print("[golf_tools] FIT VALIDATION: WARN -- some boundaries may be tighter than requested")
             for parent, child, source_name, requested, achieved, inset_amt, needed, applied, extra_shrink in tight_rows:
                 print(
                     "  -",
@@ -997,6 +1236,18 @@ def build_inserts(props):
                     "applied_outset=", round(applied, 4),
                     "extra_shrink=", round(extra_shrink, 4),
                 )
+            if fit_compromise_rows:
+                for parent, child, source_name, reason, amount in fit_compromise_rows[:12]:
+                    print(
+                        "  -",
+                        f"{parent}->{child}",
+                        source_name,
+                        reason,
+                        "amount=",
+                        round(amount, 4),
+                    )
+                if len(fit_compromise_rows) > 12:
+                    print("  -", "...", len(fit_compromise_rows) - 12, "more compromise rows")
             print("[golf_tools] Recommendation: increase insert_clearance slightly or test-fit these pairs first")
         else:
             print("[golf_tools] FIT VALIDATION: PASS -- all boundaries met requested clearance")

@@ -313,6 +313,18 @@ class HOLEINONE_InsertProperties(bpy.types.PropertyGroup):
         max=2.0,
         precision=3,
     )
+    deep_layer_clearance_bias: bpy.props.FloatProperty(
+        name="Deep Layer Bias (mm)",
+        description=(
+            "Extra clearance added to Green/Tee/Sand/Water layer pockets when "
+            "geometry safety limits prevent tight fit on inner layers. "
+            "Try 0.1–0.15 if deep layers don't fit. Default 0.0."
+        ),
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        precision=3,
+    )
     use_shrink_element: bpy.props.BoolProperty(
         name="Shrink Insert",
         description=(
@@ -343,9 +355,49 @@ class HOLEINONE_InsertProperties(bpy.types.PropertyGroup):
         ),
         default="EMBOSS",
     )
+    generate_container: bpy.props.BoolProperty(
+        name="Generate Container",
+        description=(
+            "Create a printable container with a cavity sized to the insert "
+            "base and optional clearance"
+        ),
+        default=False,
+    )
+    container_clearance: bpy.props.FloatProperty(
+        name="Container Clearance (mm)",
+        description="Gap added per side between insert base and container cavity",
+        default=0.25,
+        min=0.0,
+        max=2.0,
+        precision=3,
+    )
+    container_wall_thickness: bpy.props.FloatProperty(
+        name="Container Wall (mm)",
+        description="Container wall thickness around the cavity",
+        default=2.0,
+        min=0.5,
+        max=10.0,
+        precision=3,
+    )
+    container_back_thickness: bpy.props.FloatProperty(
+        name="Container Back (mm)",
+        description="Solid back thickness below the cavity",
+        default=2.0,
+        min=0.5,
+        max=10.0,
+        precision=3,
+    )
     use_embossed_border: bpy.props.BoolProperty(
         name="Embossed Border",
         description="Add a raised border ring around the outside of the base",
+        default=False,
+    )
+    separate_border_insert: bpy.props.BoolProperty(
+        name="Separate Border Insert",
+        description=(
+            "Generate the border as a separate ring with a matching socket cut "
+            "into the base so it can be glued in"
+        ),
         default=False,
     )
     border_inset: bpy.props.FloatProperty(

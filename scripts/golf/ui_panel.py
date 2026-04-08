@@ -131,6 +131,7 @@ class HOLEINONE_PT_InsertPanel(bpy.types.Panel):
         col = layout.column(align=True)
         col.label(text="Fit / Clearance:")
         col.prop(props, "insert_clearance")
+        col.prop(props, "deep_layer_clearance_bias")
         col.prop(props, "use_shrink_element")
 
         layout.separator()
@@ -145,8 +146,17 @@ class HOLEINONE_PT_InsertPanel(bpy.types.Panel):
         col.prop(props, "use_embossed_border")
         sub = col.column(align=True)
         sub.enabled = props.use_embossed_border
+        sub.prop(props, "separate_border_insert")
         sub.prop(props, "border_inset")
         sub.prop(props, "border_width")
+
+        layout.separator()
+        layout.prop(props, "generate_container")
+        sub = layout.column(align=True)
+        sub.enabled = props.generate_container
+        sub.prop(props, "container_clearance")
+        sub.prop(props, "container_wall_thickness")
+        sub.prop(props, "container_back_thickness")
 
         layout.separator()
         layout.operator("object.build_inserts", icon="MESH_CUBE")
