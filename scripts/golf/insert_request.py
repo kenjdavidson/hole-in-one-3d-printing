@@ -87,8 +87,23 @@ class InsertRequest:
     text_extrusion_height: float = 1.0
     """Emboss height / engrave depth (mm) for Text.* on the insert base."""
 
+    generate_container: bool = False
+    """When ``True``, generate a slide-in container sized to the insert base."""
+
+    container_clearance: float = 0.25
+    """Gap added per side between insert base and container cavity (mm)."""
+
+    container_wall_thickness: float = 2.0
+    """Container wall thickness around the cavity (mm)."""
+
+    container_back_thickness: float = 2.0
+    """Container back thickness below the cavity (mm)."""
+
     use_embossed_border: bool = False
     """When ``True``, add a raised border ring on the base top surface."""
+
+    separate_border_insert: bool = False
+    """When ``True``, generate the border as a separate keyed insert ring."""
 
     border_inset: float = 0.0
     """Inset from the base edge to the border outer edge (mm)."""
@@ -118,4 +133,18 @@ class InsertRequest:
         if self.border_width <= 0.0:
             raise ValueError(
                 f"border_width must be > 0, got {self.border_width!r}"
+            )
+        if self.container_clearance < 0.0:
+            raise ValueError(
+                f"container_clearance must be >= 0, got {self.container_clearance!r}"
+            )
+        if self.container_wall_thickness <= 0.0:
+            raise ValueError(
+                "container_wall_thickness must be > 0, "
+                f"got {self.container_wall_thickness!r}"
+            )
+        if self.container_back_thickness <= 0.0:
+            raise ValueError(
+                "container_back_thickness must be > 0, "
+                f"got {self.container_back_thickness!r}"
             )
