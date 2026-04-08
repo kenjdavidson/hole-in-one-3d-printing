@@ -313,6 +313,18 @@ class HOLEINONE_InsertProperties(bpy.types.PropertyGroup):
         max=2.0,
         precision=3,
     )
+    deep_layer_clearance_bias: bpy.props.FloatProperty(
+        name="Deep Layer Bias (mm)",
+        description=(
+            "Extra clearance added to Green/Tee/Sand/Water layer pockets when "
+            "geometry safety limits prevent tight fit on inner layers. "
+            "Try 0.1–0.15 if deep layers don't fit. Default 0.0."
+        ),
+        default=0.0,
+        min=0.0,
+        max=1.0,
+        precision=3,
+    )
     use_shrink_element: bpy.props.BoolProperty(
         name="Shrink Insert",
         description=(

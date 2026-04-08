@@ -86,6 +86,9 @@ def sanitize_geometry(objects, props, output_collection):
 
         working_obj.matrix_world = obj.matrix_world.copy()
         output_collection.objects.link(working_obj)
+        # Preserve the imported source object name even if Blender auto-suffixes
+        # this temporary working copy (e.g., .001) on collection linking.
+        working_obj["_golf_src_name"] = obj.name
 
         if working_obj.data is not None:
             working_obj.data.transform(working_obj.matrix_world)

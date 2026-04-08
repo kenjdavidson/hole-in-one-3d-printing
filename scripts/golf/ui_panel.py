@@ -131,6 +131,7 @@ class HOLEINONE_PT_InsertPanel(bpy.types.Panel):
         col = layout.column(align=True)
         col.label(text="Fit / Clearance:")
         col.prop(props, "insert_clearance")
+        col.prop(props, "deep_layer_clearance_bias")
         col.prop(props, "use_shrink_element")
 
         layout.separator()

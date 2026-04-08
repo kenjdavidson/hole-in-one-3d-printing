@@ -68,6 +68,14 @@ class InsertRequest:
     is shrunk or the hole is grown to achieve the clearance gap.
     """
 
+    deep_layer_clearance_bias: float = 0.0
+    """Extra clearance added per side for Green, Tee, Sand, Water layers (mm).
+    
+    When insert geometry safety limits prevent full inset (e.g., Green can't be
+    shrunk safely), increase this to add extra buffer to deep-layer pockets so
+    the pieces still fit. Default 0.0; try 0.1–0.15 if deep layers are tight.
+    """
+
     use_shrink_element: bool = True
     """When ``True`` (default), shrink each insert outline by
     :attr:`insert_clearance` so that it fits inside a hole sized to the raw
