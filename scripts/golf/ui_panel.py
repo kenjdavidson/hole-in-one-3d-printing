@@ -43,6 +43,7 @@ class HOLEINONE_PT_Panel(bpy.types.Panel):
         sub.prop(props, "container_clearance")
         sub.prop(props, "container_wall_thickness")
         sub.prop(props, "container_back_thickness")
+        sub.prop(props, "container_cavity_extra_depth")
 
         layout.separator()
         layout.prop(props, "text_mode")
@@ -157,6 +158,7 @@ class HOLEINONE_PT_InsertPanel(bpy.types.Panel):
         sub.prop(props, "container_clearance")
         sub.prop(props, "container_wall_thickness")
         sub.prop(props, "container_back_thickness")
+        sub.prop(props, "container_cavity_extra_depth")
 
         layout.separator()
         layout.operator("object.build_inserts", icon="MESH_CUBE")

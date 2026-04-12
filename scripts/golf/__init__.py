@@ -124,6 +124,17 @@ class HOLEINONE_Properties(bpy.types.PropertyGroup):
         max=10.0,
         precision=3,
     )
+    container_cavity_extra_depth: bpy.props.FloatProperty(
+        name="Container Cavity Extra Depth (mm)",
+        description=(
+            "Extra cavity depth beyond plaque thickness so the container walls "
+            "stand proud above the inserted part"
+        ),
+        default=0.5,
+        min=0.0,
+        max=10.0,
+        precision=3,
+    )
     text_extrusion_height: bpy.props.FloatProperty(
         name="Text Height/Depth (mm)",
         description=(
@@ -384,6 +395,17 @@ class HOLEINONE_InsertProperties(bpy.types.PropertyGroup):
         description="Solid back thickness below the cavity",
         default=2.0,
         min=0.5,
+        max=10.0,
+        precision=3,
+    )
+    container_cavity_extra_depth: bpy.props.FloatProperty(
+        name="Container Cavity Extra Depth (mm)",
+        description=(
+            "Extra cavity depth beyond insert base thickness so the container "
+            "walls stand proud above the inserted assembly"
+        ),
+        default=0.5,
+        min=0.0,
         max=10.0,
         precision=3,
     )

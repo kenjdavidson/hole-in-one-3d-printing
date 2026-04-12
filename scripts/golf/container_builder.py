@@ -34,6 +34,7 @@ def build_container(props, base, strap_holes, output_collection, cutters_collect
     clearance = float(max(0.0, props.container_clearance))
     wall_thickness = float(max(0.1, props.container_wall_thickness))
     back_thickness = float(max(0.1, props.container_back_thickness))
+    cavity_extra_depth = float(max(0.0, getattr(props, "container_cavity_extra_depth", 0.0)))
 
     plaque_x = float(base.dimensions.x)
     plaque_y = float(base.dimensions.y)
@@ -41,7 +42,7 @@ def build_container(props, base, strap_holes, output_collection, cutters_collect
 
     cavity_x = plaque_x + (clearance * 2.0)
     cavity_y = plaque_y + (clearance * 2.0)
-    cavity_depth = plaque_z + clearance
+    cavity_depth = plaque_z + clearance + cavity_extra_depth
 
     container_x = cavity_x + (wall_thickness * 2.0)
     container_y = cavity_y + (wall_thickness * 2.0)
@@ -102,6 +103,8 @@ def build_container(props, base, strap_holes, output_collection, cutters_collect
         container.name,
         "location=",
         tuple(round(value, 3) for value in container.location),
+        "cavity_extra_depth=",
+        round(cavity_extra_depth, 3),
         "strap_holes=",
         len(strap_holes),
     )

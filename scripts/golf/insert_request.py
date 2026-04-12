@@ -107,6 +107,13 @@ class InsertRequest:
     container_back_thickness: float = 2.0
     """Container back thickness below the cavity (mm)."""
 
+    container_cavity_extra_depth: float = 0.5
+    """Extra cavity depth beyond insert base thickness (mm).
+
+    Positive values make container walls taller than the inserted assembly,
+    providing a protective raised edge.
+    """
+
     use_embossed_border: bool = False
     """When ``True``, add a raised border ring on the base top surface."""
 
@@ -155,4 +162,9 @@ class InsertRequest:
             raise ValueError(
                 "container_back_thickness must be > 0, "
                 f"got {self.container_back_thickness!r}"
+            )
+        if self.container_cavity_extra_depth < 0.0:
+            raise ValueError(
+                "container_cavity_extra_depth must be >= 0, "
+                f"got {self.container_cavity_extra_depth!r}"
             )
