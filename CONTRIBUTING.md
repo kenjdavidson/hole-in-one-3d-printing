@@ -228,6 +228,22 @@ carve_plaque(req)
 3. Open the **Golf** tab in the Sidebar (press `N` in the 3D Viewport).
 4. Adjust plaque dimensions if needed, then click **Generate 3D Plaque**.
 
+#### Topology workflow (LiDAR + SVG)
+
+1. Acquire LiDAR data using `kenjdavidson/golf-course-3d-generator` scripts.
+2. Normalize/export elevation values as JSON or CSV.
+3. Import your SVG in Blender.
+4. In the **Golf** sidebar, open **Topology Builder**.
+5. Set **LiDAR File**, adjust **LiDAR Height Scale**, and click
+   **Build Topology Plaque**.
+
+#### Recommended manual merge strategy
+
+When cross-repository automation is unavailable, add
+`kenjdavidson/golf-course-3d-generator` as a submodule under
+`external/golf-course-3d-generator` and wire its output into this repo's
+Topology Builder / `/generate/topology` flow before migrating scripts directly.
+
 > **Tip – symbolic-link install on Windows:**
 > ```
 > mklink /D "%APPDATA%\Blender Foundation\Blender\<version>\scripts\addons\golf" "PATH_TO_THIS_REPO\scripts\golf"

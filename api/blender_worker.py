@@ -9,7 +9,7 @@ Blender's ``--python`` flag:
             --input       /tmp/<uuid>.svg \\
             --output      /tmp/<uuid>_out \\
             --format      stl|blend \\
-            --mode        engrave|insert \\
+            --mode        engrave|insert|topology \\
             --params-file /tmp/<uuid>_params.json
 
 Everything before ``--`` is consumed by Blender itself; everything after is
@@ -20,6 +20,7 @@ The actual pipeline and export logic lives in the ``worker/`` sub-package:
 * :mod:`worker.scene`   – scene setup and SVG import
 * :mod:`worker.engrave` – ``carve_plaque`` runner
 * :mod:`worker.insert`  – ``build_inserts`` runner
+* :mod:`worker.topology` – LiDAR + SVG topology runner
 * :mod:`worker.export`  – ``.blend`` / STL export
 """
 
@@ -48,7 +49,12 @@ def _parse_args() -> argparse.Namespace:
         "--format", required=True, choices=["stl", "blend"], help="Export format"
     )
     parser.add_argument(
-        "--mode", required=True, choices=["engrave", "insert"], help="Generation mode"
+        "--mode", required=True, choices=["engrave", "insert", "topology"], help="Generation mode"
+    )
+    parser.add_argument(
+        "--lidar",
+        default=None,
+        help="Optional LiDAR data file path (required for topology mode)",
     )
     parser.add_argument(
         "--params-file",
@@ -119,6 +125,7 @@ def _load_params(args: argparse.Namespace) -> dict:
 _RUNNERS = {
     "engrave": "worker.engrave",
     "insert":  "worker.insert",
+    "topology": "worker.topology",
 }
 
 
@@ -136,7 +143,10 @@ def main() -> None:
     # Import and run the mode-specific pipeline runner.
     import importlib
     runner_module = importlib.import_module(_RUNNERS[args.mode])
-    runner_module.run(params)
+    if args.mode == "topology":
+        runner_module.run(params, lidar_path=args.lidar)
+    else:
+        runner_module.run(params)
 
     os.makedirs(args.output, exist_ok=True)
     export.export_result(args.format, args.mode, args.output)

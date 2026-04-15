@@ -9,6 +9,7 @@ A collection of Blender Python addons and helper scripts used to build 3D-printi
 - **Material utilities** (`scripts/materials/`)
 - **Scene utilities** (`scripts/utilities/`)
 - **Golf plaque generator addon** (`scripts/golf/`) for layered hole-in-one commemorative builds
+- **Topology builder workflow** (`/generate/topology` + `scripts/golf/topology_builder.py`) for LiDAR-informed plaque generation
 
 ## Repository layout
 

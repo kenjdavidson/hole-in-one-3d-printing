@@ -258,6 +258,28 @@ class InsertSettings(BaseModel):
     )
 
 
+class TopologySettings(EngraveSettings):
+    """Build parameters for the topology pipeline.
+
+    Extends :class:`EngraveSettings` with LiDAR-to-thickness controls.
+    """
+
+    lidar_height_scale: float = Field(
+        default=0.01, ge=0,
+        description=(
+            "Scale factor applied to LiDAR elevation span (max-min) to compute "
+            "extra topology thickness in millimetres."
+        ),
+    )
+    topology_base_thickness: float = Field(
+        default=6.0, gt=0,
+        description=(
+            "Minimum baseline plaque thickness before LiDAR-derived elevation "
+            "thickness is added."
+        ),
+    )
+
+
 class HealthResponse(BaseModel):
     """Response schema for the ``/health`` endpoint."""
 

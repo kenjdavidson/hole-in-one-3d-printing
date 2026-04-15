@@ -25,6 +25,7 @@ import os
 _COLLECTION_BY_MODE: dict[str, str] = {
     "engrave": "Hole_In_One_Output",
     "insert":  "Hole_In_One_Inserts",
+    "topology": "Hole_In_One_Output",
 }
 
 

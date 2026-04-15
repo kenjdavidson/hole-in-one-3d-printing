@@ -163,3 +163,38 @@ class HOLEINONE_PT_InsertPanel(bpy.types.Panel):
         layout.separator()
         layout.operator("object.build_inserts", icon="MESH_CUBE")
 
+
+class HOLEINONE_PT_TopologyPanel(bpy.types.Panel):
+    """Sidebar panel for the Topology Builder."""
+
+    bl_label = "Topology Builder"
+    bl_idname = "HOLEINONE_PT_TopologyPanel"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Golf"
+
+    def draw(self, context):
+        layout = self.layout
+        props = context.scene.golf_topology_props
+
+        col = layout.column(align=True)
+        col.label(text="LiDAR Input:")
+        col.prop(props, "lidar_file_path")
+        col.prop(props, "lidar_height_scale")
+        col.prop(props, "topology_base_thickness")
+
+        layout.separator()
+        col = layout.column(align=True)
+        col.label(text="Plaque Dimensions:")
+        col.prop(props, "plaque_width")
+        col.prop(props, "plaque_height")
+        col.prop(props, "plaque_thick")
+
+        layout.separator()
+        col = layout.column(align=True)
+        col.label(text="Text Options:")
+        col.prop(props, "text_mode")
+        col.prop(props, "text_extrusion_height")
+
+        layout.separator()
+        layout.operator("object.build_topology", icon="MESH_GRID")

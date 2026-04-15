@@ -66,6 +66,33 @@ curl -X POST http://localhost:8000/generate/insert \
      -o inserts.blend
 ```
 
+### `POST /generate/topology`
+
+Generates an **engraved topology plaque** by combining:
+
+- an SVG artwork file (same layer naming convention as other modes), and
+- a LiDAR-derived `json`/`csv` file.
+
+The topology mode currently maps LiDAR elevation span into additional plaque
+thickness while using the same SVG carving pipeline for layer geometry.
+
+```bash
+# STL output (default)
+curl -X POST http://localhost:8000/generate/topology \
+     -F "file=@course.svg" \
+     -F "lidar_file=@lidar.json" \
+     -F "lidar_height_scale=0.01" \
+     -H "Accept: model/stl" \
+     -o topology.zip
+
+# .blend output
+curl -X POST http://localhost:8000/generate/topology \
+     -F "file=@course.svg" \
+     -F "lidar_file=@lidar.csv" \
+     -H "Accept: application/x-blender" \
+     -o topology.blend
+```
+
 ---
 
 ## STL layer grouping
@@ -107,3 +134,19 @@ Returns:
 
 Each request is handled in an isolated `/tmp/plaque_<uuid>/` directory.  
 Temp files are deleted automatically after the response is sent.
+
+---
+
+## Manual merge plan for `golf-course-3d-generator`
+
+If cross-repository automation is not available in your environment, use this
+manual merge sequence:
+
+1. Add `kenjdavidson/golf-course-3d-generator` as a submodule at
+   `external/golf-course-3d-generator`.
+2. Create a thin adapter module in this repo that runs its LiDAR acquisition
+   scripts and writes normalized `json`/`csv` elevation output.
+3. Feed that normalized LiDAR file into `POST /generate/topology` together with
+   your manually prepared SVG.
+4. Incrementally migrate useful LiDAR scripts from the submodule into
+   `scripts/golf/` once interfaces stabilize.

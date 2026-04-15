@@ -38,6 +38,7 @@ from . import ui_panel
 from . import draft_angle       # noqa: F401 – registers the module for use by plaque_builder
 from . import element_strategy  # noqa: F401 – ensures strategy registry is populated
 from . import insert_builder    # noqa: F401 – registers the insert pipeline module
+from . import topology_builder  # noqa: F401 – registers topology pipeline module
 
 
 # ── PropertyGroup ─────────────────────────────────────────────────────────────
@@ -456,6 +457,69 @@ class HOLEINONE_OT_BuildInserts(bpy.types.Operator):
         return {"FINISHED"}
 
 
+# ── Topology-builder PropertyGroup / Operator ────────────────────────────────
+
+
+class HOLEINONE_TopologyProperties(bpy.types.PropertyGroup):
+    """Scene-level properties for the Topology Builder."""
+
+    lidar_file_path: bpy.props.StringProperty(
+        name="LiDAR File",
+        description="Path to a LiDAR JSON/CSV file",
+        subtype="FILE_PATH",
+        default="",
+    )
+    lidar_height_scale: bpy.props.FloatProperty(
+        name="LiDAR Height Scale",
+        description="Scale factor applied to LiDAR elevation span",
+        default=0.01,
+        min=0.0,
+        precision=4,
+    )
+    topology_base_thickness: bpy.props.FloatProperty(
+        name="Base Thickness (mm)",
+        description="Minimum base thickness before LiDAR-derived height is applied",
+        default=6.0,
+        min=0.1,
+        precision=3,
+    )
+
+    plaque_width: bpy.props.FloatProperty(name="Width (mm)", default=100.0, min=10.0)
+    plaque_height: bpy.props.FloatProperty(name="Height (mm)", default=140.0, min=10.0)
+    plaque_thick: bpy.props.FloatProperty(name="Thickness (mm)", default=6.0, min=0.1)
+    text_mode: bpy.props.EnumProperty(
+        name="Text Mode",
+        items=(
+            ("EMBOSS", "Emboss", "Raise text above the top surface"),
+            ("ENGRAVE", "Engrave", "Cut text into the top surface"),
+        ),
+        default="EMBOSS",
+    )
+    text_extrusion_height: bpy.props.FloatProperty(
+        name="Text Height/Depth (mm)",
+        default=1.0,
+        min=0.1,
+        precision=2,
+    )
+
+
+class HOLEINONE_OT_BuildTopology(bpy.types.Operator):
+    """Build a LiDAR-informed topology plaque from imported SVG layers."""
+
+    bl_idname = "object.build_topology"
+    bl_label = "Build Topology Plaque"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        props = context.scene.golf_topology_props
+        if not props.lidar_file_path:
+            self.report({"ERROR"}, "LiDAR File is required")
+            return {"CANCELLED"}
+        topology_builder.build_topology(props)
+        self.report({"INFO"}, "Topology plaque generated successfully")
+        return {"FINISHED"}
+
+
 # ── Registration ──────────────────────────────────────────────────────────────
 
 _classes = (
@@ -463,8 +527,11 @@ _classes = (
     HOLEINONE_OT_Generate,
     HOLEINONE_InsertProperties,
     HOLEINONE_OT_BuildInserts,
+    HOLEINONE_TopologyProperties,
+    HOLEINONE_OT_BuildTopology,
     ui_panel.HOLEINONE_PT_Panel,
     ui_panel.HOLEINONE_PT_InsertPanel,
+    ui_panel.HOLEINONE_PT_TopologyPanel,
 )
 
 
@@ -477,6 +544,9 @@ def register():
     bpy.types.Scene.golf_insert_props = bpy.props.PointerProperty(
         type=HOLEINONE_InsertProperties
     )
+    bpy.types.Scene.golf_topology_props = bpy.props.PointerProperty(
+        type=HOLEINONE_TopologyProperties
+    )
 
 
 def unregister():
@@ -484,6 +554,7 @@ def unregister():
         bpy.utils.unregister_class(cls)
     del bpy.types.Scene.golf_props
     del bpy.types.Scene.golf_insert_props
+    del bpy.types.Scene.golf_topology_props
 
 
 if __name__ == "__main__":

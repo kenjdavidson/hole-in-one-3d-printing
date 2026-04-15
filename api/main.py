@@ -14,7 +14,13 @@ from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, UploadFile
 from fastapi.responses import Response
 
 from .generation import run_generation
-from .schemas import EngraveSettings, HealthResponse, InsertSettings, make_form_depends
+from .schemas import (
+    EngraveSettings,
+    HealthResponse,
+    InsertSettings,
+    TopologySettings,
+    make_form_depends,
+)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -36,6 +42,7 @@ app = FastAPI(
 # Pre-build the form dependency functions once at import time.
 _engrave_form = make_form_depends(EngraveSettings)
 _insert_form = make_form_depends(InsertSettings)
+_topology_form = make_form_depends(TopologySettings)
 
 # ---------------------------------------------------------------------------
 # Status
@@ -146,4 +153,49 @@ async def generate_insert(
     """
     return await run_generation(
         file, settings.model_dump(), "insert", accept, background_tasks
+    )
+
+
+@app.post(
+    "/generate/topology",
+    summary="Generate a LiDAR-informed topology plaque",
+    tags=["Generation"],
+    response_description=(
+        "ZIP of per-layer STL files (model/stl) "
+        "or a .blend project (application/x-blender)"
+    ),
+    responses={
+        200: {"description": "Generated model returned in the requested format"},
+        500: {"description": "Blender worker failure – response includes stdout/stderr"},
+        504: {"description": "Blender worker timed out"},
+    },
+)
+async def generate_topology(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(
+        ...,
+        description="SVG file containing the golf-course artwork layers.",
+    ),
+    lidar_file: UploadFile = File(
+        ...,
+        description="LiDAR-derived JSON/CSV data file used to drive topology thickness.",
+    ),
+    settings: TopologySettings = Depends(_topology_form),
+    accept: Optional[str] = Header(
+        default="model/stl",
+        description=(
+            "Desired output format. "
+            "Use `model/stl` (default) for a ZIP of STL files, "
+            "or `application/x-blender` for a .blend project file."
+        ),
+    ),
+) -> Response:
+    """Generate a topology-aware plaque from SVG and LiDAR inputs."""
+    return await run_generation(
+        file,
+        settings.model_dump(),
+        "topology",
+        accept,
+        background_tasks,
+        extra_uploads={"lidar": lidar_file},
     )

@@ -16,6 +16,7 @@ import subprocess
 import tempfile
 import uuid
 import zipfile
+from pathlib import Path
 from typing import Optional
 
 from fastapi import BackgroundTasks, UploadFile
@@ -122,6 +123,7 @@ async def run_generation(
     mode: str,
     accept: Optional[str],
     background_tasks: BackgroundTasks,
+    extra_uploads: Optional[dict[str, UploadFile]] = None,
 ) -> Response:
     """Persist the SVG, invoke the Blender worker, and stream the result.
 
@@ -129,10 +131,12 @@ async def run_generation(
         file:             Uploaded SVG file.
         params:           Validated build parameters (from a Pydantic model's
                           ``model_dump()``).
-        mode:             ``"engrave"`` or ``"insert"``.
+        mode:             ``"engrave"``, ``"insert"``, or ``"topology"``.
         accept:           Value of the client's ``Accept`` header.
         background_tasks: FastAPI background task queue; used to schedule
                           ``/tmp`` cleanup after the response is sent.
+        extra_uploads:    Optional additional uploaded files keyed by worker
+                          argument name (for example ``{"lidar": file}``).
 
     Returns:
         A :class:`~fastapi.responses.StreamingResponse` containing either a
@@ -153,6 +157,16 @@ async def run_generation(
     svg_bytes = await file.read()
     with open(svg_path, "wb") as fh:
         fh.write(svg_bytes)
+
+    extra_paths: dict[str, str] = {}
+    for arg_name, upload in (extra_uploads or {}).items():
+        if upload is None:
+            continue
+        suffix = Path(upload.filename or "").suffix or ".dat"
+        extra_path = os.path.join(work_dir, f"{arg_name}{suffix}")
+        with open(extra_path, "wb") as fh:
+            fh.write(await upload.read())
+        extra_paths[arg_name] = extra_path
 
     output_dir = os.path.join(work_dir, "output")
     os.makedirs(output_dir, exist_ok=True)
@@ -176,6 +190,8 @@ async def run_generation(
         "--mode",        mode,
         "--params-file", params_path,
     ]
+    for arg_name, path in extra_paths.items():
+        cmd.extend([f"--{arg_name}", path])
 
     logger.info("Job %s [%s/%s]: %s", job_id, mode, fmt, " ".join(cmd))
 
