@@ -162,8 +162,7 @@ async def run_generation(
     for arg_name, upload in (extra_uploads or {}).items():
         if upload is None:
             continue
-        safe_name = Path(upload.filename or "").name
-        suffix = Path(safe_name).suffix.lower()
+        suffix = Path(Path(upload.filename or "").name).suffix.lower()
         if not suffix:
             content_type = (upload.content_type or "").lower()
             if "json" in content_type:

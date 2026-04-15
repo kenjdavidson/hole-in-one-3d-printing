@@ -268,7 +268,8 @@ class TopologySettings(EngraveSettings):
         default=0.01, ge=0,
         description=(
             "Scale factor applied to LiDAR elevation span (max-min) to compute "
-            "extra topology thickness in millimetres."
+            "extra topology thickness in millimetres. Set to 0 to disable "
+            "LiDAR thickness contribution."
         ),
     )
     topology_base_thickness: float = Field(

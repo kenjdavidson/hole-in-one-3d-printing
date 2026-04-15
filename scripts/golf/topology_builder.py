@@ -10,7 +10,7 @@ from .plaque_builder import carve_plaque
 from .plaque_request import PlaqueRequest
 
 
-def _iter_json_numbers(node):
+def _iter_elevation_values(node):
     if isinstance(node, (int, float)):
         yield float(node)
         return
@@ -21,12 +21,12 @@ def _iter_json_numbers(node):
             if isinstance(value, (int, float)):
                 yield float(value)
         for child in node.values():
-            yield from _iter_json_numbers(child)
+            yield from _iter_elevation_values(child)
         return
 
     if isinstance(node, list):
         for child in node:
-            yield from _iter_json_numbers(child)
+            yield from _iter_elevation_values(child)
 
 
 def _load_elevations(lidar_path: str) -> list[float]:
@@ -49,7 +49,7 @@ def _load_elevations(lidar_path: str) -> list[float]:
 
     with path.open(encoding="utf-8") as fh:
         data = json.load(fh)
-    return list(_iter_json_numbers(data))
+    return list(_iter_elevation_values(data))
 
 
 def build_topology_from_params(params: dict, lidar_path: str) -> None:
@@ -67,7 +67,8 @@ def build_topology_from_params(params: dict, lidar_path: str) -> None:
     topology_base_thickness = float(params.get("topology_base_thickness", req.plaque_thick))
 
     req.use_auto_thickness = False
-    # Enforce a minimum baseline before adding LiDAR-derived topology height.
+    # Keep whichever baseline is thicker between incoming plaque settings and
+    # topology-specific minimum, then add LiDAR-derived topology height.
     req.plaque_thick = max(req.plaque_thick, topology_base_thickness) + (lidar_span * lidar_height_scale)
 
     print(
