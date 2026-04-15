@@ -1,0 +1,36 @@
+# Golf Plaque GaaS – Docker Compose orchestration
+#
+# Services
+# --------
+# plaque-api  FastAPI + headless Blender 5.0 service
+#
+# Usage
+# -----
+# docker compose up --build          # build and start
+# docker compose up -d               # run in background
+# docker compose logs -f plaque-api  # tail logs
+#
+# The ./output directory is mounted into the container so that generated
+# models are persisted locally for inspection / debugging.
+
+services:
+  plaque-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist generated models locally for debugging.
+      # The API itself writes to /tmp inside the container; mount this
+      # folder to retain any files explicitly moved there for inspection.
+      - ./output:/app/output
+    environment:
+      - BLENDER_BIN=/usr/local/bin/blender
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
