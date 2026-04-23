@@ -40,6 +40,17 @@ class InsertRequest:
     plaque_height: float = 140.0
     """Plaque height in millimetres."""
 
+    plaque_shape: str = "RECTANGLE"
+    """Base shape used when no ``Plaque_Base`` SVG object is present.
+
+    Valid values are ``"RECTANGLE"`` (default – a rectangular slab) and
+    ``"CIRCLE"`` (a cylinder whose diameter equals the smaller of
+    ``plaque_width`` and ``plaque_height``).
+
+    When a ``Plaque_Base`` or ``Plaque_Frame`` SVG object *is* present it is
+    used directly as the base shape regardless of this setting.
+    """
+
     plaque_thick: float = 6.0
     """Base plaque thickness in millimetres."""
 
@@ -128,7 +139,14 @@ class InsertRequest:
 
     # ── Validation ────────────────────────────────────────────────────────────
 
+    _VALID_PLAQUE_SHAPES = {"RECTANGLE", "CIRCLE"}
+
     def __post_init__(self):
+        if self.plaque_shape not in self._VALID_PLAQUE_SHAPES:
+            raise ValueError(
+                f"Invalid plaque_shape {self.plaque_shape!r}. "
+                f"Expected one of: {sorted(self._VALID_PLAQUE_SHAPES)}"
+            )
         if self.insert_clearance < 0.0:
             raise ValueError(
                 f"insert_clearance must be >= 0, got {self.insert_clearance!r}"

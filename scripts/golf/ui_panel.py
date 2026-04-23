@@ -25,6 +25,7 @@ class HOLEINONE_PT_Panel(bpy.types.Panel):
         col.label(text="Plaque Dimensions:")
         col.prop(props, "plaque_width")
         col.prop(props, "plaque_height")
+        col.prop(props, "plaque_shape")
 
         layout.separator()
         layout.prop(props, "use_auto_thickness")
@@ -111,6 +112,7 @@ class HOLEINONE_PT_InsertPanel(bpy.types.Panel):
         col.label(text="Plaque Dimensions:")
         col.prop(props, "plaque_width")
         col.prop(props, "plaque_height")
+        col.prop(props, "plaque_shape")
         col.prop(props, "plaque_thick")
 
         layout.separator()
@@ -188,6 +190,7 @@ class HOLEINONE_PT_TopologyPanel(bpy.types.Panel):
         col.label(text="Plaque Dimensions:")
         col.prop(props, "plaque_width")
         col.prop(props, "plaque_height")
+        col.prop(props, "plaque_shape")
         col.prop(props, "plaque_thick")
 
         layout.separator()

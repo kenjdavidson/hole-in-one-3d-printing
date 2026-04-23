@@ -59,6 +59,19 @@ class HOLEINONE_Properties(bpy.types.PropertyGroup):
         default=140.0,
         min=10.0,
     )
+    plaque_shape: bpy.props.EnumProperty(
+        name="Base Shape",
+        description=(
+            "Shape of the plaque base when no Plaque_Base SVG object is present. "
+            "When a Plaque_Base SVG is imported its outline is used directly, "
+            "supporting any shape drawn in Inkscape (rounded rectangle, circle, etc.)"
+        ),
+        items=(
+            ("RECTANGLE", "Rectangle", "Rectangular base (default)"),
+            ("CIRCLE", "Circle", "Circular base; diameter = min(width, height)"),
+        ),
+        default="RECTANGLE",
+    )
     plaque_thick: bpy.props.FloatProperty(
         name="Thickness (mm)",
         description="Plaque thickness in millimetres",
@@ -281,6 +294,19 @@ class HOLEINONE_InsertProperties(bpy.types.PropertyGroup):
         default=140.0,
         min=10.0,
     )
+    plaque_shape: bpy.props.EnumProperty(
+        name="Base Shape",
+        description=(
+            "Shape of the plaque base when no Plaque_Base SVG object is present. "
+            "When a Plaque_Base SVG is imported its outline is used directly, "
+            "supporting any shape drawn in Inkscape (rounded rectangle, circle, etc.)"
+        ),
+        items=(
+            ("RECTANGLE", "Rectangle", "Rectangular base (default)"),
+            ("CIRCLE", "Circle", "Circular base; diameter = min(width, height)"),
+        ),
+        default="RECTANGLE",
+    )
     plaque_thick: bpy.props.FloatProperty(
         name="Base Thickness (mm)",
         description="Thickness of the base plaque that receives the outermost insert",
@@ -486,6 +512,18 @@ class HOLEINONE_TopologyProperties(bpy.types.PropertyGroup):
 
     plaque_width: bpy.props.FloatProperty(name="Width (mm)", default=100.0, min=10.0)
     plaque_height: bpy.props.FloatProperty(name="Height (mm)", default=140.0, min=10.0)
+    plaque_shape: bpy.props.EnumProperty(
+        name="Base Shape",
+        description=(
+            "Shape of the plaque base when no Plaque_Base SVG object is present. "
+            "When a Plaque_Base SVG is imported its outline is used directly."
+        ),
+        items=(
+            ("RECTANGLE", "Rectangle", "Rectangular base (default)"),
+            ("CIRCLE", "Circle", "Circular base; diameter = min(width, height)"),
+        ),
+        default="RECTANGLE",
+    )
     plaque_thick: bpy.props.FloatProperty(name="Thickness (mm)", default=6.0, min=0.1)
     text_mode: bpy.props.EnumProperty(
         name="Text Mode",

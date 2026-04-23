@@ -446,6 +446,30 @@ def _resolve_text_element_type(props):
     return ElementType.EMBOSS
 
 
+def _create_circle_outline_obj(name, radius, collection):
+    """Create a flat filled-circle mesh object centered at the origin.
+
+    Used by :func:`_create_border_outline_objects` when the plaque shape is
+    ``"CIRCLE"`` and no SVG base outline is available.
+
+    Args:
+        name:       Object name.
+        radius:     Circle radius in mm.
+        collection: Blender collection to link the new object into.
+
+    Returns:
+        The newly created Blender mesh object, or ``None`` if *radius* <= 0.
+    """
+    if radius <= 0:
+        return None
+    bpy.ops.mesh.primitive_circle_add(vertices=64, radius=radius, fill_type="TRIFAN")
+    obj = bpy.context.active_object
+    obj.name = name
+    move_object_to_collection(obj, collection)
+    obj.location = (0.0, 0.0, 0.0)
+    return obj
+
+
 def _create_border_outline_objects(
     base_x,
     base_y,
@@ -455,8 +479,17 @@ def _create_border_outline_objects(
     inner_name,
     outer_inset,
     inner_inset,
+    plaque_shape="RECTANGLE",
 ):
-    """Create flat outer/inner border outline objects from plaque geometry."""
+    """Create flat outer/inner border outline objects from plaque geometry.
+
+    When *plaque_base_svg* is provided its outline is duplicated and inset to
+    produce the two rings — this supports any SVG shape.
+
+    When no SVG is available the outlines are created from the manual
+    dimensions.  ``plaque_shape == "CIRCLE"`` produces filled-circle outlines;
+    ``"RECTANGLE"`` (default) produces the existing rectangular cubes.
+    """
     if inner_inset <= outer_inset + _BORDER_SOCKET_MIN_WIDTH_MM:
         return None, None
 
@@ -468,6 +501,20 @@ def _create_border_outline_objects(
 
         inner_obj = _duplicate_mesh_obj(plaque_base_svg, inner_name, collection)
         if inner_inset > 0.0 and not _apply_flat_inset_safe(inner_obj, inner_inset):
+            _dispose_temp_object(outer_obj)
+            _dispose_temp_object(inner_obj)
+            return None, None
+        return outer_obj, inner_obj
+
+    if plaque_shape == "CIRCLE":
+        base_radius = min(float(base_x), float(base_y)) / 2.0
+        outer_radius = base_radius - outer_inset
+        inner_radius = base_radius - inner_inset
+        if outer_radius <= 0.0 or inner_radius <= 0.0 or inner_radius >= outer_radius:
+            return None, None
+        outer_obj = _create_circle_outline_obj(outer_name, outer_radius, collection)
+        inner_obj = _create_circle_outline_obj(inner_name, inner_radius, collection)
+        if outer_obj is None or inner_obj is None:
             _dispose_temp_object(outer_obj)
             _dispose_temp_object(inner_obj)
             return None, None
@@ -559,8 +606,9 @@ def _apply_embossed_border_to_base(
     inserts_collection,
     cutters_collection,
     border_socket_depth,
+    plaque_shape="RECTANGLE",
 ):
-    """Optionally add a raised rectangular border ring to the insert base."""
+    """Optionally add a raised border ring to the insert base."""
     if not getattr(props, "use_embossed_border", False):
         return False, []
 
@@ -599,6 +647,7 @@ def _apply_embossed_border_to_base(
             "_Insert_Base_BorderInnerCut",
             piece_outer_inset,
             piece_inner_inset,
+            plaque_shape,
         )
         if piece_outer is None or piece_inner is None:
             print("[golf_tools] Separate border skipped: invalid border insert geometry")
@@ -617,6 +666,7 @@ def _apply_embossed_border_to_base(
             "_Insert_Base_BorderPocketInnerCut",
             pocket_outer_inset,
             pocket_inner_inset,
+            plaque_shape,
         )
         if pocket_outer is None or pocket_inner is None:
             print("[golf_tools] Separate border skipped: invalid border pocket geometry")
@@ -643,6 +693,7 @@ def _apply_embossed_border_to_base(
             "_Insert_Base_BorderInnerCut",
             border_inset,
             inner_inset,
+            plaque_shape,
         )
         if border_outer is None or inner_cutter is None:
             print("[golf_tools] Embossed border skipped: invalid border geometry")
@@ -777,6 +828,13 @@ def build_inserts(props):
     else:
         base_x = float(props.plaque_width)
         base_y = float(props.plaque_height)
+        plaque_shape = getattr(props, "plaque_shape", "RECTANGLE")
+        if plaque_shape == "CIRCLE":
+            radius = min(base_x, base_y) / 2.0
+            # Clamp both dimensions to the actual circle diameter so that the
+            # oversized-cutter limits and border-ring math are calculated correctly.
+            base_x = radius * 2.0
+            base_y = radius * 2.0
 
     plaque_thick = float(props.plaque_thick)
     border_socket_depth = min(effective_hole_depth, plaque_thick)
@@ -789,12 +847,30 @@ def build_inserts(props):
             source_layer_map[source.name] = _extract_name_layer_number(_source_name(source))
 
     # ── Build the base plaque with a receiving hole for the outermost layer ─
-    bpy.ops.mesh.primitive_cube_add(size=1)
-    base = bpy.context.active_object
-    base.name = f"{BASE_OBJECT_NAME}_Inserts"
-    move_object_to_collection(base, inserts_collection)
-    base.scale = (base_x, base_y, plaque_thick)
-    bpy.ops.object.transform_apply(scale=True)
+    if plaque_base_svg is not None:
+        # Use the SVG outline directly as the base shape (supports any SVG shape).
+        base = _duplicate_mesh_obj(
+            plaque_base_svg, f"{BASE_OBJECT_NAME}_Inserts", inserts_collection
+        )
+        _apply_solidify_and_bake(base, plaque_thick, offset=0.0)
+        _cleanup_insert_mesh(base)
+    else:
+        plaque_shape = getattr(props, "plaque_shape", "RECTANGLE")
+        if plaque_shape == "CIRCLE":
+            radius = base_x / 2.0
+            bpy.ops.mesh.primitive_cylinder_add(
+                radius=radius,
+                depth=plaque_thick,
+                vertices=64,
+            )
+            base = bpy.context.active_object
+        else:
+            bpy.ops.mesh.primitive_cube_add(size=1)
+            base = bpy.context.active_object
+            base.scale = (base_x, base_y, plaque_thick)
+            bpy.ops.object.transform_apply(scale=True)
+        base.name = f"{BASE_OBJECT_NAME}_Inserts"
+        move_object_to_collection(base, inserts_collection)
 
     outermost_prefix, _ = present_layers[0]
     outermost_svgs = [
@@ -1161,6 +1237,7 @@ def build_inserts(props):
         inserts_collection,
         cutters_collection,
         border_socket_depth,
+        getattr(props, "plaque_shape", "RECTANGLE"),
     )
 
     for border_piece in border_pieces:

@@ -39,6 +39,19 @@ class PlaqueRequest:
     plaque_height: float = 140.0
     """Plaque height in millimetres."""
 
+    plaque_shape: str = "RECTANGLE"
+    """Base shape used when no ``Plaque_Base`` SVG object is present.
+
+    Valid values are ``"RECTANGLE"`` (default – a rectangular slab) and
+    ``"CIRCLE"`` (a cylinder whose diameter equals the smaller of
+    ``plaque_width`` and ``plaque_height``).
+
+    When a ``Plaque_Base`` or ``Plaque_Frame`` SVG object *is* present it is
+    used directly as the base shape regardless of this setting, so rounded
+    rectangles, circles, and any custom outlines drawn in Inkscape are all
+    supported automatically through the SVG workflow.
+    """
+
     plaque_thick: float = 6.0
     """Manual plaque thickness in millimetres (used when ``use_auto_thickness`` is ``False``)."""
 
@@ -122,10 +135,16 @@ class PlaqueRequest:
     # ── Validation ────────────────────────────────────────────────────────────
 
     _VALID_TEXT_MODES = {"EMBOSS", "ENGRAVE"}
+    _VALID_PLAQUE_SHAPES = {"RECTANGLE", "CIRCLE"}
 
     def __post_init__(self):
         if self.text_mode not in self._VALID_TEXT_MODES:
             raise ValueError(
                 f"Invalid text_mode {self.text_mode!r}. "
                 f"Expected one of: {sorted(self._VALID_TEXT_MODES)}"
+            )
+        if self.plaque_shape not in self._VALID_PLAQUE_SHAPES:
+            raise ValueError(
+                f"Invalid plaque_shape {self.plaque_shape!r}. "
+                f"Expected one of: {sorted(self._VALID_PLAQUE_SHAPES)}"
             )

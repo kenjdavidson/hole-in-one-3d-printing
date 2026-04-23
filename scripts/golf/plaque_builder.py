@@ -70,8 +70,52 @@ def _resolve_element_type(prefix, layer_config, props):
     return layer_config.element_type
 
 
+def _solidify_plaque_shape(obj, plaque_thickness):
+    """Solidify a flat SVG outline to create the 3-D plaque base.
+
+    Applies Weld → Triangulate → Solidify with a symmetric offset so the
+    resulting solid spans from ``-plaque_thickness/2`` to
+    ``+plaque_thickness/2`` in Z.  This matches the positioning of the
+    fallback :func:`bpy.ops.mesh.primitive_cube_add` used when no SVG base
+    is present, so all downstream cutter logic remains unchanged.
+
+    Args:
+        obj:               The flat Blender mesh object to solidify.
+        plaque_thickness:  Full thickness of the resulting solid (mm).
+    """
+    bpy.context.view_layer.objects.active = obj
+
+    weld = obj.modifiers.new(name="Weld", type="WELD")
+    weld.merge_threshold = 0.0001
+    bpy.ops.object.modifier_apply(modifier=weld.name)
+
+    tri = obj.modifiers.new(name="Triangulate", type="TRIANGULATE")
+    tri.quad_method = "BEAUTY"
+    tri.ngon_method = "BEAUTY"
+    bpy.ops.object.modifier_apply(modifier=tri.name)
+
+    solidify = obj.modifiers.new(name="Solidify", type="SOLIDIFY")
+    solidify.thickness = plaque_thickness
+    # offset=0 extrudes symmetrically: z from -thick/2 to +thick/2,
+    # matching the cube primitive used in the fallback path.
+    solidify.offset = 0.0
+    solidify.use_even_offset = False
+    solidify.use_quality_normals = True
+    bpy.ops.object.modifier_apply(modifier=solidify.name)
+
+
 def carve_plaque(props):
     """Build the base plaque and process each SVG layer through its strategy.
+
+    When a ``Plaque_Base`` or ``Plaque_Frame`` SVG object is present in the
+    scene its outline is solidified and used **directly** as the 3-D base,
+    so any shape drawn in Inkscape (rectangle, rounded rectangle, circle,
+    custom polygon …) is faithfully reproduced in the final plaque.
+
+    When no such SVG object is found a primitive is created from the manual
+    dimension properties.  ``plaque_shape == "CIRCLE"`` produces a cylinder
+    (diameter = ``min(plaque_width, plaque_height)``); ``"RECTANGLE"``
+    (default) produces the classic rectangular slab.
 
     Args:
         props: Blender scene property group or a
@@ -96,22 +140,39 @@ def carve_plaque(props):
 
     plaque_base_svg = find_plaque_base(all_svg_objs)
     if plaque_base_svg is not None:
+        # Use the SVG outline directly as the base shape.  This supports any
+        # shape the designer provides — rectangles, rounded rectangles,
+        # circles, or fully custom outlines.
         base_x = plaque_base_svg.dimensions.x
         base_y = plaque_base_svg.dimensions.y
         move_object_to_collection(plaque_base_svg, output_collection)
-        plaque_base_svg.display_type = "WIRE"
-        plaque_base_svg.hide_viewport = True
-        plaque_base_svg.hide_render = True
+        _solidify_plaque_shape(plaque_base_svg, plaque_thickness)
+        base = plaque_base_svg
+        base.name = BASE_OBJECT_NAME
     else:
         base_x = props.plaque_width
         base_y = props.plaque_height
+        plaque_shape = getattr(props, "plaque_shape", "RECTANGLE")
+        if plaque_shape == "CIRCLE":
+            radius = min(base_x, base_y) / 2.0
+            # Clamp both dimensions to the actual circle diameter so that the
+            # BuildContext oversized-cutter limits are calculated correctly.
+            base_x = radius * 2.0
+            base_y = radius * 2.0
+            bpy.ops.mesh.primitive_cylinder_add(
+                radius=radius,
+                depth=plaque_thickness,
+                vertices=64,
+            )
+            base = bpy.context.active_object
+        else:
+            bpy.ops.mesh.primitive_cube_add(size=1)
+            base = bpy.context.active_object
+            base.scale = (base_x, base_y, plaque_thickness)
+            bpy.ops.object.transform_apply(scale=True)
+        base.name = BASE_OBJECT_NAME
+        move_object_to_collection(base, output_collection)
 
-    bpy.ops.mesh.primitive_cube_add(size=1)
-    base = bpy.context.active_object
-    base.name = BASE_OBJECT_NAME
-    move_object_to_collection(base, output_collection)
-    base.scale = (base_x, base_y, plaque_thickness)
-    bpy.ops.object.transform_apply(scale=True)
     base.data.materials.append(setup_material("Rough", COLOR_MAP["Rough"].color))
 
     ctx = BuildContext(
